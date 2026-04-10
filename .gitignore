@@ -1,0 +1,6 @@
+~$*.xlsx
+school_voting.db
+__pycache__/
+*.pyc
+.streamlit/
+.DS_Store
