@@ -62,42 +62,41 @@ class Utils:
     @staticmethod
     def create_results_file(results: Dict, stats: Dict) -> bytes:
         """
-        Multi-sheet Excel results file:
-        - Sheet 1: Summary (winner per committee)
-        - Sheet 2+: One sheet per committee with full breakdown
-        - Final sheet: House participation stats
+        Multi-sheet Excel:  Summary | per-committee | Participation
+        Respects max_winners per committee.
         """
         output = BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
 
-            # ── Summary sheet ──────────────────────────────────────────────
+            # Summary
             summary_rows = []
             for ctype in ['School', 'House']:
                 if ctype not in results:
                     continue
                 for cname, data in sorted(results[ctype].items()):
-                    cands = data['candidates']
-                    if not cands:
+                    cands   = data['candidates']
+                    max_w   = data.get('max_winners', 1)
+                    winners = [c for c in cands if c.get('is_winner')][:max_w]
+                    if not winners:
                         continue
-                    winner = cands[0]
-                    tie_note = ' (TIE)' if winner.get('is_tied') else ''
-                    summary_rows.append({
-                        'Type':          ctype,
-                        'Committee':     cname,
-                        'Winner':        winner['name'] + tie_note,
-                        'Winner Class':  winner['class'],
-                        'Winner House':  winner['house'],
-                        'Votes':         winner['votes'],
-                        'Total Votes':   data['total_votes'],
-                        'Vote %':        f"{winner['pct']}%",
-                        'Candidates':    len(cands),
-                    })
+                    for w in winners:
+                        summary_rows.append({
+                            'Type':         ctype,
+                            'Committee':    cname,
+                            'Positions':    max_w,
+                            'Winner':       w['name'] + (' (TIE)' if w.get('is_tied') else ''),
+                            'Class':        w['class'],
+                            'House':        w['house'],
+                            'Votes':        w['votes'],
+                            'Total Votes':  data['total_votes'],
+                            'Vote %':       f"{w['pct']}%",
+                        })
             if summary_rows:
                 df_sum = pd.DataFrame(summary_rows)
                 df_sum.to_excel(writer, index=False, sheet_name='Summary')
                 _autofit(writer.sheets['Summary'], df_sum)
 
-            # ── Per-committee sheets ───────────────────────────────────────
+            # Per-committee sheets
             for ctype in ['School', 'House']:
                 if ctype not in results:
                     continue
@@ -105,35 +104,37 @@ class Utils:
                     cands = data['candidates']
                     if not cands:
                         continue
-                    rows = []
+                    max_w = data.get('max_winners', 1)
+                    rows  = []
                     for rank, c in enumerate(cands, 1):
+                        status = ''
+                        if c.get('is_winner'):
+                            status = f"{'🏆' if rank <= max_w else ''} WINNER"
+                            if c.get('is_tied'):
+                                status += ' (TIE)'
                         rows.append({
-                            'Rank':      rank,
-                            'Name':      c['name'],
-                            'Class':     c['class'],
-                            'House':     c['house'],
-                            'Votes':     c['votes'],
-                            'Vote %':    f"{c['pct']}%",
-                            'Status':    ('🏆 WINNER' + (' (TIE)' if c.get('is_tied') else ''))
-                                         if c['is_winner'] else '',
+                            'Rank':     rank,
+                            'Name':     c['name'],
+                            'Class':    c['class'],
+                            'House':    c['house'],
+                            'Votes':    c['votes'],
+                            'Vote %':   f"{c['pct']}%",
+                            'Status':   status,
                         })
-                    sheet_name = f"{ctype[:1]}-{cname}"[:31]  # Excel 31-char limit
-                    df_c = pd.DataFrame(rows)
-                    df_c.to_excel(writer, index=False, sheet_name=sheet_name)
-                    _autofit(writer.sheets[sheet_name], df_c)
+                    sname = f"{ctype[:1]}-{cname}"[:31]
+                    df_c  = pd.DataFrame(rows)
+                    df_c.to_excel(writer, index=False, sheet_name=sname)
+                    _autofit(writer.sheets[sname], df_c)
 
-            # ── Participation sheet ────────────────────────────────────────
-            part_rows = [{
-                'Metric':  'Total Students',  'Value': stats['total_students']
-            }, {
-                'Metric':  'Voted',           'Value': stats['voted_students']
-            }, {
-                'Metric':  'Not Voted',       'Value': stats['not_voted']
-            }, {
-                'Metric':  'Turnout %',       'Value': f"{stats['participation_rate']:.1f}%"
-            }, {
-                'Metric':  'Total Votes Cast','Value': stats['total_votes']
-            }]
+            # Participation
+            part_rows = [
+                {'Metric': 'Phase',          'Value': stats.get('phase', 'N/A').upper()},
+                {'Metric': 'Total Students', 'Value': stats['total_students']},
+                {'Metric': 'Voted',          'Value': stats['voted_students']},
+                {'Metric': 'Not Voted',      'Value': stats['not_voted']},
+                {'Metric': 'Turnout %',      'Value': f"{stats['participation_rate']:.1f}%"},
+                {'Metric': 'Total Votes',    'Value': stats['total_votes']},
+            ]
             df_p = pd.DataFrame(part_rows)
             df_p.to_excel(writer, index=False, sheet_name='Participation')
             _autofit(writer.sheets['Participation'], df_p)
@@ -269,6 +270,74 @@ class Utils:
             return datetime.fromisoformat(ts).strftime("%d-%m-%Y %H:%M:%S")
         except Exception:
             return ts or ''
+
+    @staticmethod
+    def create_pending_voters_file(students: List[Tuple]) -> bytes:
+        """Excel list of students who haven't voted yet."""
+        if not students:
+            return b''
+        df = pd.DataFrame(students, columns=['Adm No', 'Name', 'Class', 'Section', 'House'])
+        df = df.sort_values(['Class', 'Name'])
+        output = BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, index=False, sheet_name='Pending Voters')
+            _autofit(writer.sheets['Pending Voters'], df)
+        return output.getvalue()
+
+    @staticmethod
+    def backup_results(results: Dict, stats: Dict, backup_dir: str = 'backups') -> str:
+        """
+        Save a timestamped results Excel to disk before reset.
+        Returns the filename written.
+        """
+        import os
+        os.makedirs(backup_dir, exist_ok=True)
+        ts       = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = os.path.join(backup_dir, f'election_backup_{ts}.xlsx')
+        data     = Utils.create_results_file(results, stats)
+        with open(filename, 'wb') as fh:
+            fh.write(data)
+        return filename
+
+    @staticmethod
+    def parse_bulk_nomination_excel(df: pd.DataFrame) -> Tuple[List[Dict], List[str]]:
+        """
+        Parse bulk nomination upload.
+        Required columns: admission_no, committee_type, committee_name
+        Optional: scope_class, scope_house, section_group, manifesto
+        Returns (rows, errors).
+        """
+        df.columns = [str(c).strip().lower() for c in df.columns]
+        required   = {'admission_no', 'committee_type', 'committee_name'}
+        missing    = required - set(df.columns)
+        if missing:
+            return [], [f"Missing columns: {', '.join(sorted(missing))}"]
+
+        rows, errors = [], []
+        valid_types  = {'School', 'House'}
+        for idx, row in df.iterrows():
+            adm   = str(row.get('admission_no', '')).strip().lower().split('.')[0]
+            ctype = str(row.get('committee_type', '')).strip().title()
+            cname = str(row.get('committee_name', '')).strip()
+            if not adm or len(adm) < 2:
+                errors.append(f"Row {idx+2}: invalid admission_no")
+                continue
+            if ctype not in valid_types:
+                errors.append(f"Row {idx+2}: committee_type must be School or House, got '{ctype}'")
+                continue
+            if not cname:
+                errors.append(f"Row {idx+2}: committee_name is empty")
+                continue
+            rows.append({
+                'admission_no':   adm,
+                'committee_type': ctype,
+                'committee_name': cname,
+                'scope_class':    str(row.get('scope_class', '') or '').strip() or None,
+                'scope_house':    str(row.get('scope_house', '') or '').strip() or None,
+                'section_group':  str(row.get('section_group', '') or '').strip() or None,
+                'manifesto':      str(row.get('manifesto', '') or '').strip(),
+            })
+        return rows, errors
 
     @staticmethod
     def get_vote_statistics(db: Database) -> dict:

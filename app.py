@@ -251,12 +251,11 @@ if st.session_state.user_type is not None:
 # ─────────────────────────────────────────────────────────────────────────────
 # HERO BANNER
 # ─────────────────────────────────────────────────────────────────────────────
+from pages.components import phase_badge
+
+phase = election.get_phase()
 is_live = election.is_live()
-status_html = (
-    '<span class="live-badge"><span class="live-dot"></span>ELECTION IS LIVE</span>'
-    if is_live else
-    '<span class="stopped-badge">⚫ Election Not Started</span>'
-)
+status_html = phase_badge(phase)
 st.markdown(f"""
 <div class="hero-wrap">
     <div class="hero-title">🗳️ JB Academy Elections</div>
@@ -571,9 +570,11 @@ elif st.session_state.user_type == 'admin':
                 for r in rows:
                     info = ci(r[1])
                     desc = r[3] if len(r) > 3 and r[3] else info['desc']
+                    max_w = r[4] if len(r) > 4 else 1
+                    pos_label = f"{max_w} position{'s' if max_w > 1 else ''}"
                     cc1, cc2 = st.columns([7, 1])
                     cc1.markdown(
-                        f"{info['icon']} **{r[1]}** — "
+                        f"{info['icon']} **{r[1]}** ({pos_label}) — "
                         f"<span style='color:#64748b;font-size:.82rem;'>{desc}</span>",
                         unsafe_allow_html=True
                     )
@@ -590,10 +591,12 @@ elif st.session_state.user_type == 'admin':
             ncn = st.text_input('Committee Name')
             nct = st.selectbox('Type', ['School', 'House'])
             ncd = st.text_input('Description (optional)', placeholder='What does this committee do?')
+            nmw = st.number_input('Max Winners (positions)', min_value=1, max_value=5, value=1, 
+                                  help='Set to 2 for Captain + Vice-Captain, 3 for Captain + 2 Vice-Captains, etc.')
             if st.button('➕ Add Committee', type='primary', use_container_width=True):
-                ok, msg = cm.add(ncn, nct, ncd)
+                ok, msg = cm.add(ncn, nct, ncd, max_winners=nmw)
                 if ok:
-                    audit.log('ADD_COMMITTEE', 'admin', f'{ncn} ({nct})')
+                    audit.log('ADD_COMMITTEE', 'admin', f'{ncn} ({nct}, {nmw} positions)')
                     st.markdown(f'<div class="success-box">✅ {msg}</div>', unsafe_allow_html=True)
                     st.rerun()
                 else:
@@ -601,7 +604,7 @@ elif st.session_state.user_type == 'admin':
 
     # ── TAB 4: NOMINATIONS ────────────────────────────────────────────────────
     with t4:
-        ns1, ns2, ns3 = st.tabs(['⏳ Pending Approval', '➕ Nominate (Admin)', '📋 All Nominations'])
+        ns1, ns2, ns3, ns4 = st.tabs(['⏳ Pending Approval', '➕ Nominate (Admin)', '📤 Bulk Upload', '📋 All Nominations'])
 
         with ns1:
             pending = Candidate(db).get_pending()
@@ -696,6 +699,55 @@ elif st.session_state.user_type == 'admin':
                                 st.markdown(f'<div class="error-box">❌ {msg}</div>', unsafe_allow_html=True)
 
         with ns3:
+            st.markdown('### 📤 Bulk Nomination Upload')
+            st.markdown("""
+            Upload an Excel file with columns: `admission_no`, `committee_type`, `committee_name`
+            
+            **Example:**
+            | admission_no | committee_type | committee_name |
+            |--------------|----------------|----------------|
+            | jb001        | School         | Sports         |
+            | jb002        | House          | Literary       |
+            """)
+            
+            uploaded = st.file_uploader('Choose Excel file', type=['xlsx', 'xls'], key='bulk_nom')
+            
+            if uploaded:
+                try:
+                    df = pd.read_excel(uploaded)
+                    rows, parse_errors = Utils.parse_bulk_nomination_excel(df)
+                    
+                    if parse_errors:
+                        st.markdown('<div class="warn-box">⚠️ <strong>Parsing Errors:</strong></div>', unsafe_allow_html=True)
+                        for err in parse_errors:
+                            st.error(err)
+                    
+                    if rows:
+                        st.markdown(f'<div class="info-box">📋 Found {len(rows)} valid nomination(s)</div>', unsafe_allow_html=True)
+                        st.dataframe(pd.DataFrame(rows, columns=['admission_no', 'committee_type', 'committee_name']))
+                        
+                        if st.button('✅ Import All', type='primary', key='bulk_import_btn'):
+                            imported, import_errors = Candidate(db).bulk_add(rows)
+                            
+                            if imported > 0:
+                                st.markdown(f'<div class="success-box">✅ Imported {imported} nomination(s)</div>', unsafe_allow_html=True)
+                                audit.log('BULK_NOMINATE', 'admin', f'{imported} nominations')
+                            
+                            if import_errors:
+                                st.markdown('<div class="error-box">❌ <strong>Import Errors:</strong></div>', unsafe_allow_html=True)
+                                for err in import_errors:
+                                    st.error(err)
+                            
+                            if imported > 0:
+                                time.sleep(1)
+                                st.rerun()
+                    else:
+                        st.markdown('<div class="warn-box">⚠️ No valid rows found</div>', unsafe_allow_html=True)
+                        
+                except Exception as e:
+                    st.markdown(f'<div class="error-box">❌ Error reading file: {str(e)}</div>', unsafe_allow_html=True)
+
+        with ns4:
             all_noms = Candidate(db).get_all_with_names()
             if not all_noms:
                 st.info("No nominations yet.")
@@ -721,87 +773,126 @@ elif st.session_state.user_type == 'admin':
 
     # ── TAB 5: ELECTION CONTROL ───────────────────────────────────────────────
     with t5:
-        live_now = election.is_live()
-        if live_now:
+        phase = election.get_phase()
+        
+        # Phase status banner
+        if phase == 'setup':
+            st.markdown(
+                '<div style="background:rgba(99,102,241,.12);border:1px solid rgba(99,102,241,.4);'
+                'border-radius:14px;padding:20px;text-align:center;">'
+                '<strong style="color:#a5b4fc;font-size:1.2rem;">⚙️ SETUP Phase</strong><br>'
+                '<span style="color:#94a3b8;font-size:.85rem;">Nominations open · Voting not started</span></div>',
+                unsafe_allow_html=True
+            )
+        elif phase == 'live':
             st.markdown(
                 '<div style="background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.4);'
                 'border-radius:14px;padding:20px;text-align:center;">'
                 '<span class="live-dot" style="display:inline-block;"></span> '
-                '<strong style="color:#fca5a5;font-size:1.2rem;">ELECTION IS LIVE</strong><br>'
-                '<span style="color:#94a3b8;font-size:.85rem;">Students can currently vote</span></div>',
+                '<strong style="color:#fca5a5;font-size:1.2rem;">🔴 LIVE Phase</strong><br>'
+                '<span style="color:#94a3b8;font-size:.85rem;">Students can vote now</span></div>',
                 unsafe_allow_html=True
             )
-        else:
+        else:  # closed
             st.markdown(
-                '<div style="background:rgba(100,116,139,.1);border:1px solid rgba(100,116,139,.3);'
+                '<div style="background:rgba(16,185,129,.12);border:1px solid rgba(16,185,129,.4);'
                 'border-radius:14px;padding:20px;text-align:center;">'
-                '<strong style="color:#94a3b8;font-size:1.2rem;">⚫ Election is Stopped</strong><br>'
-                '<span style="color:#475569;font-size:.85rem;">Start the election when students are ready</span></div>',
+                '<strong style="color:#6ee7b7;font-size:1.2rem;">✅ CLOSED Phase</strong><br>'
+                '<span style="color:#94a3b8;font-size:.85rem;">Voting ended · Results public</span></div>',
                 unsafe_allow_html=True
             )
 
         st.markdown('<br>', unsafe_allow_html=True)
         ec1, ec2, ec3 = st.columns(3)
 
+        # GO LIVE button (SETUP → LIVE)
         with ec1:
-            if st.button('▶ START ELECTION', use_container_width=True, type='primary'):
-                st.session_state.confirm_start = True
-            if st.session_state.confirm_start:
-                st.markdown('<div class="info-box">⚡ Students will be able to vote immediately. Nominations will be locked.</div>', unsafe_allow_html=True)
-                y1, y2 = st.columns(2)
-                with y1:
-                    if st.button('✅ Yes, Start', key='ys'):
-                        ok, msg = election.start()
-                        if ok:
-                            audit.log('START_ELECTION', 'admin')
+            if phase == 'setup':
+                if st.button('🚀 GO LIVE', use_container_width=True, type='primary'):
+                    st.session_state.confirm_start = True
+                if st.session_state.confirm_start:
+                    st.markdown('<div class="info-box">⚡ Voting opens. Nominations lock. Pending nominations auto-reject.</div>', unsafe_allow_html=True)
+                    y1, y2 = st.columns(2)
+                    with y1:
+                        if st.button('✅ Confirm', key='ys'):
+                            ok, msg = election.go_live()
+                            if ok:
+                                audit.log('GO_LIVE', 'admin')
+                                st.session_state.confirm_start = False
+                                st.rerun()
+                            else:
+                                st.markdown(f'<div class="error-box">❌ {msg}</div>', unsafe_allow_html=True)
+                                st.session_state.confirm_start = False
+                    with y2:
+                        if st.button('Cancel', key='ns'):
                             st.session_state.confirm_start = False
                             st.rerun()
-                        else:
-                            st.markdown(f'<div class="error-box">❌ {msg}</div>', unsafe_allow_html=True)
-                            st.session_state.confirm_start = False
-                with y2:
-                    if st.button('Cancel', key='ns'):
-                        st.session_state.confirm_start = False
-                        st.rerun()
 
+        # CLOSE button (LIVE → CLOSED)
         with ec2:
-            if st.button('⏹ STOP ELECTION', use_container_width=True, type='secondary'):
-                st.session_state.confirm_stop = True
-            if st.session_state.confirm_stop:
-                st.markdown('<div class="warn-box">⚠️ No more votes will be accepted.</div>', unsafe_allow_html=True)
-                y1, y2 = st.columns(2)
-                with y1:
-                    if st.button('✅ Yes, Stop', key='yst'):
-                        election.stop()
-                        audit.log('STOP_ELECTION', 'admin')
-                        st.session_state.confirm_stop = False
-                        st.rerun()
-                with y2:
-                    if st.button('Cancel', key='nst'):
-                        st.session_state.confirm_stop = False
-                        st.rerun()
+            if phase == 'live':
+                if st.button('⏹ CLOSE Election', use_container_width=True, type='secondary'):
+                    st.session_state.confirm_stop = True
+                if st.session_state.confirm_stop:
+                    st.markdown('<div class="warn-box">⚠️ Voting stops. Results become public.</div>', unsafe_allow_html=True)
+                    y1, y2 = st.columns(2)
+                    with y1:
+                        if st.button('✅ Confirm', key='yst'):
+                            ok, msg = election.close()
+                            if ok:
+                                audit.log('CLOSE_ELECTION', 'admin')
+                                st.session_state.confirm_stop = False
+                                st.rerun()
+                            else:
+                                st.markdown(f'<div class="error-box">❌ {msg}</div>', unsafe_allow_html=True)
+                    with y2:
+                        if st.button('Cancel', key='nst'):
+                            st.session_state.confirm_stop = False
+                            st.rerun()
 
+        # RESET button (any phase → SETUP with backup)
         with ec3:
-            if st.button('🔄 RESET ELECTION', use_container_width=True):
+            if st.button('🔄 RESET Election', use_container_width=True):
                 st.session_state.confirm_reset = True
             if st.session_state.confirm_reset:
-                st.markdown('<div class="error-box">🚨 This permanently clears ALL votes. Cannot be undone.</div>', unsafe_allow_html=True)
+                st.markdown('<div class="error-box">🚨 Clears ALL votes. Backup created first.</div>', unsafe_allow_html=True)
                 if st.checkbox('I understand and confirm reset', key='rack'):
                     y1, y2 = st.columns(2)
                     with y1:
                         if st.button('✅ Reset', key='yr'):
+                            # Backup first
+                            results = voting.get_results()
+                            stats = election.get_statistics()
+                            filename = Utils.backup_results(results, stats)
+                            st.info(f'📦 Backup: {filename}')
+                            
+                            # Now reset
                             ok, msg = election.reset()
                             if ok:
-                                audit.log('ELECTION_RESET', 'admin', msg)
+                                audit.log('ELECTION_RESET', 'admin', f'Backup: {filename}')
                                 st.markdown(f'<div class="success-box">✅ {msg}</div>', unsafe_allow_html=True)
                             else:
                                 st.markdown(f'<div class="error-box">❌ {msg}</div>', unsafe_allow_html=True)
                             st.session_state.confirm_reset = False
                             st.rerun()
-                    with y2:
-                        if st.button('Cancel', key='nr'):
-                            st.session_state.confirm_reset = False
-                            st.rerun()
+        
+        st.markdown('---')
+        
+        # Download pending voters
+        st.markdown('### 📥 Download Pending Voters')
+        pending = Student(db).get_pending_voters()
+        if pending:
+            excel_bytes = Utils.create_pending_voters_file(pending)
+            st.download_button(
+                '📊 Download Pending Voters Excel',
+                excel_bytes,
+                'pending_voters.xlsx',
+                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                key='dl_pending'
+            )
+            st.caption(f'{len(pending)} student(s) have not voted yet.')
+        else:
+            st.success('✅ All students have voted!')
 
         st.divider()
         stats = election.get_statistics()
@@ -867,27 +958,52 @@ elif st.session_state.user_type == 'admin':
                     for comm_name, data in sorted(results_data[ctype].items()):
                         cands      = data['candidates']
                         total_cv   = data['total_votes']
+                        max_w      = data.get('max_winners', 1)
                         info       = ci(comm_name)
+                        pos_label  = f"{max_w} position{'s' if max_w > 1 else ''}"
 
                         st.markdown(f"""
                         <div class="comm-header">
                             <span class="comm-icon">{info['icon']}</span>
                             <div>
                                 <div class="comm-title">{comm_name}</div>
-                                <div class="comm-desc">{info['desc']} &nbsp;·&nbsp; {total_cv} vote(s) cast</div>
+                                <div class="comm-desc">{info['desc']} &nbsp;·&nbsp; {pos_label} &nbsp;·&nbsp; {total_cv} vote(s) cast</div>
                             </div>
                         </div>""", unsafe_allow_html=True)
 
                         if not cands:
                             continue
 
-                        # Tie banner
-                        if cands and cands[0].get('is_tied'):
+                        # Tie banner + tie-break UI
+                        tied_cands = [c for c in cands if c.get('is_tied')]
+                        if tied_cands:
                             st.markdown(
                                 '<div class="warn-box">⚖️ <strong>TIE</strong> — Multiple candidates share the top position. '
-                                'Admin may need to apply a tie-breaking rule.</div>',
+                                'Use the tie-break tool below to record your decision.</div>',
                                 unsafe_allow_html=True
                             )
+                            
+                            # Tie-break UI (only in CLOSED phase)
+                            if election.is_closed():
+                                with st.expander(f"🔨 Break tie for {comm_name}"):
+                                    options = {c['name']: c['adm'] for c in tied_cands}
+                                    chosen_name = st.selectbox(
+                                        'Select winner', list(options.keys()),
+                                        key=f'tb_sel_{comm_name}'
+                                    )
+                                    reason = st.text_input(
+                                        'Reason (required)', key=f'tb_reason_{comm_name}',
+                                        placeholder='e.g. Coin toss, teacher decision, re-vote...'
+                                    )
+                                    if st.button('✅ Confirm Tie-Break', key=f'tb_btn_{comm_name}', type='primary'):
+                                        if not reason.strip():
+                                            st.error('Reason is required.')
+                                        else:
+                                            Vote(db).record_tie_break(comm_name, options[chosen_name], reason.strip(), 'admin')
+                                            st.success(f'✅ Tie-break recorded: {chosen_name} wins.')
+                                            audit.log('TIE_BREAK', 'admin', f'{comm_name}: {chosen_name} ({reason})')
+                                            time.sleep(1)
+                                            st.rerun()
 
                         # Podium (top 3, only when votes exist)
                         if total_cv > 0 and len(cands) >= 2:
@@ -1170,6 +1286,19 @@ elif st.session_state.user_type == 'student':
                         {('<div style="color:#34d399;font-size:.82rem;margin-top:6px;">✅ Approved — you are on the ballot!</div>' if cs=="approved" else "")}
                         {('<div style="color:#f87171;font-size:.82rem;margin-top:6px;">❌ Not approved this time. You can try another committee.</div>' if cs=="rejected" else "")}
                     </div>""", unsafe_allow_html=True)
+                    
+                    # Withdrawal button (only in SETUP phase and for approved/pending nominations)
+                    if election.is_setup() and cs in ['approved', 'pending']:
+                        if st.button(f'🚫 Withdraw from {cn}', key=f'withdraw_{cn}', type='secondary'):
+                            ok, msg = Candidate(db).withdraw(fresh[0], cn)
+                            if ok:
+                                st.success(msg)
+                                audit.log('WITHDRAW_NOM', fresh[0], f'{cn}')
+                                time.sleep(0.5)
+                                st.rerun()
+                            else:
+                                st.error(msg)
+                
                 st.markdown('<br>', unsafe_allow_html=True)
 
             # Nomination form

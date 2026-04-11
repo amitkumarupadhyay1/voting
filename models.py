@@ -106,6 +106,7 @@ class Database:
             name           TEXT NOT NULL,
             committee_type TEXT NOT NULL CHECK(committee_type IN ("School","House")),
             description    TEXT DEFAULT "",
+            max_winners    INTEGER DEFAULT 1,
             created_at     TEXT,
             UNIQUE(name, committee_type)
         );
@@ -158,6 +159,13 @@ class Database:
             updated_at TEXT
         );
 
+        CREATE TABLE IF NOT EXISTS election_backups (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            filename   TEXT NOT NULL,
+            total_votes INTEGER DEFAULT 0,
+            created_at TEXT NOT NULL
+        );
+
         CREATE TABLE IF NOT EXISTS login_attempts (
             user_id    TEXT NOT NULL,
             attempted_at TEXT NOT NULL,
@@ -175,16 +183,17 @@ class Database:
     def _migrate_schema(self, conn: sqlite3.Connection):
         """Non-destructive migrations for existing databases."""
         migrations = [
-            ('students',   'generated_password', 'TEXT'),
-            ('students',   'created_at',         'TEXT'),
-            ('students',   'updated_at',         'TEXT'),
-            ('candidates', 'created_at',         'TEXT'),
-            ('candidates', 'manifesto',          'TEXT'),
-            ('candidates', 'status',             "TEXT DEFAULT 'approved'"),
-            ('candidates', 'nominated_by',       "TEXT DEFAULT 'admin'"),
-            ('committees', 'description',        "TEXT DEFAULT ''"),
-            ('audit_log',  'ip_address',         'TEXT'),
-            ('settings',   'updated_at',         'TEXT'),
+            ('students',         'generated_password', 'TEXT'),
+            ('students',         'created_at',         'TEXT'),
+            ('students',         'updated_at',         'TEXT'),
+            ('candidates',       'created_at',         'TEXT'),
+            ('candidates',       'manifesto',          'TEXT'),
+            ('candidates',       'status',             "TEXT DEFAULT 'approved'"),
+            ('candidates',       'nominated_by',       "TEXT DEFAULT 'admin'"),
+            ('committees',       'description',        "TEXT DEFAULT ''"),
+            ('committees',       'max_winners',        'INTEGER DEFAULT 1'),
+            ('audit_log',        'ip_address',         'TEXT'),
+            ('settings',         'updated_at',         'TEXT'),
         ]
         for table, col, col_type in migrations:
             try:
@@ -273,6 +282,12 @@ class Student:
             ('UPDATE students SET has_voted=1,updated_at=? WHERE admission_no=?',
              (datetime.now().isoformat(), admission_no))
         ])
+
+    def get_pending_voters(self) -> List[Tuple]:
+        """Students who haven't voted yet — for download."""
+        return [tuple(r) for r in self.db.execute(
+            'SELECT admission_no,name,class,section,house FROM students WHERE has_voted=0 ORDER BY class,name'
+        ).fetchall()]
 
 
 class VoteToken:
@@ -367,6 +382,17 @@ class Vote:
     def delete_vote(self, vote_id: int) -> bool:
         return self.db.write_many([('DELETE FROM votes WHERE id=?', (vote_id,))])
 
+    def record_tie_break(self, committee_name: str, winner_adm: str,
+                         reason: str, admin_id: str = 'admin') -> bool:
+        """Log a manual tie-break decision in the audit log."""
+        from models import AuditLog
+        return self.db.write_many([(
+            'INSERT INTO audit_log (action,user_adm,details,created_at) VALUES (?,?,?,?)',
+            ('TIE_BREAK', admin_id,
+             f'Committee={committee_name} Winner={winner_adm} Reason={reason}',
+             datetime.now().isoformat())
+        )])
+
     def get_results_all(self) -> List[Tuple]:
         """Single query: all committee results with candidate names, class, house."""
         return [tuple(r) for r in self.db.execute('''
@@ -431,6 +457,55 @@ class Candidate:
     def remove(self, candidate_id: int) -> bool:
         return self.db.write_many([('DELETE FROM candidates WHERE id=?', (candidate_id,))])
 
+    def withdraw(self, admission_no: str, committee_name: str) -> Tuple[bool, str]:
+        """Student withdraws their own nomination (only when election is in SETUP phase)."""
+        row = self.db.execute(
+            'SELECT id,status FROM candidates WHERE LOWER(TRIM(admission_no))=? AND committee_name=?',
+            (admission_no.strip().lower(), committee_name)
+        ).fetchone()
+        if not row:
+            return False, "Nomination not found"
+        ok = self.db.write_many([('DELETE FROM candidates WHERE id=?', (row[0],))])
+        return (True, "Nomination withdrawn") if ok else (False, "Database error")
+
+    def bulk_add(self, rows: List[Dict]) -> Tuple[int, List[str]]:
+        """
+        Bulk-nominate from a list of dicts.
+        Each dict: {admission_no, committee_type, committee_name,
+                    scope_class, scope_house, section_group, manifesto}
+        Returns (imported_count, error_messages).
+        """
+        imported, errors = 0, []
+        now = datetime.now().isoformat()
+        for i, r in enumerate(rows, 1):
+            adm   = str(r.get('admission_no', '')).strip().lower()
+            ctype = str(r.get('committee_type', '')).strip()
+            cname = str(r.get('committee_name', '')).strip()
+            if not adm or not ctype or not cname:
+                errors.append(f"Row {i}: missing admission_no / committee_type / committee_name")
+                continue
+            existing = self.db.execute(
+                'SELECT id FROM candidates WHERE LOWER(TRIM(admission_no))=? AND committee_name=?',
+                (adm, cname)
+            ).fetchone()
+            if existing:
+                errors.append(f"Row {i}: {adm} already nominated for {cname} — skipped")
+                continue
+            ok = self.db.write_many([(
+                '''INSERT INTO candidates
+                   (admission_no,committee_type,committee_name,scope_class,
+                    scope_house,section_group,manifesto,status,nominated_by,created_at)
+                   VALUES (?,?,?,?,?,?,?,?,?,?)''',
+                (adm, ctype, cname,
+                 r.get('scope_class'), r.get('scope_house'), r.get('section_group'),
+                 r.get('manifesto', ''), 'approved', 'admin', now)
+            )])
+            if ok:
+                imported += 1
+            else:
+                errors.append(f"Row {i}: DB error for {adm}")
+        return imported, errors
+
     def get_all(self) -> List[Tuple]:
         return [tuple(r) for r in
                 self.db.execute('SELECT * FROM candidates ORDER BY committee_name').fetchall()]
@@ -489,13 +564,33 @@ class Committee:
                 self.db.execute('SELECT name FROM committees WHERE committee_type=? ORDER BY name',
                                 (committee_type,)).fetchall()]
 
-    def add(self, name: str, committee_type: str, description: str = '') -> Tuple[bool, str]:
+    def get_max_winners(self, committee_name: str) -> int:
+        """Return max_winners for a committee (default 1)."""
+        row = self.db.execute(
+            'SELECT max_winners FROM committees WHERE name=?', (committee_name,)
+        ).fetchone()
+        return int(row[0]) if row and row[0] else 1
+
+    def get_meta_map(self) -> Dict[str, Dict]:
+        """Return {name: {type, description, max_winners}} for all committees — one query."""
+        rows = self.db.execute(
+            'SELECT name, committee_type, description, max_winners FROM committees'
+        ).fetchall()
+        return {
+            r[0]: {'type': r[1], 'description': r[2] or '', 'max_winners': int(r[3] or 1)}
+            for r in rows
+        }
+
+    def add(self, name: str, committee_type: str, description: str = '',
+            max_winners: int = 1) -> Tuple[bool, str]:
         name = name.strip()
         if not name:
             return False, "Committee name cannot be empty"
+        if max_winners < 1:
+            max_winners = 1
         ok = self.db.write_many([(
-            'INSERT INTO committees (name,committee_type,description,created_at) VALUES (?,?,?,?)',
-            (name, committee_type, description.strip(), datetime.now().isoformat())
+            'INSERT INTO committees (name,committee_type,description,max_winners,created_at) VALUES (?,?,?,?,?)',
+            (name, committee_type, description.strip(), max_winners, datetime.now().isoformat())
         )])
         if ok:
             return True, "Committee added"
@@ -516,50 +611,94 @@ class Committee:
 
 
 class Election:
+    """
+    Phase state machine:
+      SETUP  — nominations open, voting blocked
+      LIVE   — voting open, nominations locked
+      CLOSED — voting stopped, results public
+    Transitions: SETUP→LIVE→CLOSED  (reset returns to SETUP)
+    """
+    PHASE_SETUP  = 'setup'
+    PHASE_LIVE   = 'live'
+    PHASE_CLOSED = 'closed'
+
     def __init__(self, db: Database):
         self.db = db
+        # Migrate old binary flag to phase
+        self._migrate_phase()
 
-    def _set(self, key: str, value: str):
+    def _migrate_phase(self):
+        """One-time migration: convert old election_live flag to phase."""
+        phase_row = self.db.execute(
+            "SELECT value FROM settings WHERE key='election_phase'"
+        ).fetchone()
+        if phase_row:
+            return  # already migrated
+        old_row = self.db.execute(
+            "SELECT value FROM settings WHERE key='election_live'"
+        ).fetchone()
+        phase = self.PHASE_LIVE if (old_row and old_row[0] == '1') else self.PHASE_SETUP
         self.db.write_many([(
             'INSERT OR REPLACE INTO settings(key,value,updated_at) VALUES(?,?,?)',
-            (key, value, datetime.now().isoformat())
+            ('election_phase', phase, datetime.now().isoformat())
         )])
 
-    def start(self) -> Tuple[bool, str]:
-        """Start election — blocked if no approved candidates exist."""
+    def _set_phase(self, phase: str):
+        self.db.write_many([(
+            'INSERT OR REPLACE INTO settings(key,value,updated_at) VALUES(?,?,?)',
+            ('election_phase', phase, datetime.now().isoformat())
+        )])
+
+    def get_phase(self) -> str:
+        row = self.db.execute(
+            "SELECT value FROM settings WHERE key='election_phase'"
+        ).fetchone()
+        return row[0] if row else self.PHASE_SETUP
+
+    # Convenience booleans used throughout the app
+    def is_setup(self)  -> bool: return self.get_phase() == self.PHASE_SETUP
+    def is_live(self)   -> bool: return self.get_phase() == self.PHASE_LIVE
+    def is_closed(self) -> bool: return self.get_phase() == self.PHASE_CLOSED
+
+    def go_live(self) -> Tuple[bool, str]:
+        """SETUP → LIVE. Auto-rejects all pending nominations."""
+        if not self.is_setup():
+            return False, "Can only go live from Setup phase."
         approved = self.db.execute(
             'SELECT COUNT(*) FROM candidates WHERE status="approved"'
         ).fetchone()[0]
         if approved == 0:
-            return False, "Cannot start — no approved candidates exist yet."
-        self._set('election_live', '1')
-        return True, "Election started"
+            return False, "Cannot go live — no approved candidates exist."
+        # Auto-reject lingering pending nominations
+        self.db.write_many([(
+            'UPDATE candidates SET status="rejected" WHERE status="pending"', ()
+        )])
+        self._set_phase(self.PHASE_LIVE)
+        return True, "Election is now LIVE. Pending nominations auto-rejected."
 
-    def stop(self) -> bool:
-        self._set('election_live', '0')
-        return True
-
-    def is_live(self) -> bool:
-        row = self.db.execute("SELECT value FROM settings WHERE key='election_live'").fetchone()
-        return row is not None and row[0] == '1'
+    def close(self) -> Tuple[bool, str]:
+        """LIVE → CLOSED."""
+        if not self.is_live():
+            return False, "Election is not currently live."
+        self._set_phase(self.PHASE_CLOSED)
+        return True, "Election closed. Results are now public."
 
     def reset(self) -> Tuple[bool, str]:
+        """Any phase → SETUP. Clears votes. Caller must backup first."""
         now = datetime.now().isoformat()
         total_votes = self.db.execute('SELECT COUNT(*) FROM votes').fetchone()[0]
         ok = self.db.write_many([
-            ('''INSERT INTO audit_log (action,user_adm,details,created_at)
-                VALUES (?,?,?,?)''',
+            ('INSERT INTO audit_log (action,user_adm,details,created_at) VALUES (?,?,?,?)',
              ('ELECTION_RESET', 'admin',
-              f'Election reset. {total_votes} votes cleared.', now)),
-            ('DELETE FROM votes',    ()),
+              f'Reset from phase={self.get_phase()}. {total_votes} votes cleared.', now)),
+            ('DELETE FROM votes', ()),
             ('DELETE FROM vote_tokens', ()),
             ('UPDATE students SET has_voted=0', ()),
             ('INSERT OR REPLACE INTO settings(key,value,updated_at) VALUES(?,?,?)',
-             ('election_live', '0', now)),
+             ('election_phase', self.PHASE_SETUP, now)),
         ])
-        if ok:
-            return True, f"Election reset. {total_votes} votes cleared."
-        return False, "Reset failed — check logs."
+        return (True, f"Reset complete. {total_votes} votes cleared.") if ok \
+               else (False, "Reset failed — check logs.")
 
     def get_statistics(self) -> Dict:
         total   = self.db.execute('SELECT COUNT(*) FROM students').fetchone()[0]
@@ -571,6 +710,7 @@ class Election:
             'not_voted':          total - voted,
             'total_votes':        t_votes,
             'participation_rate': (voted / total * 100) if total > 0 else 0,
+            'phase':              self.get_phase(),
         }
 
 
