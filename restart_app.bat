@@ -1,0 +1,6 @@
+@echo off
+echo Stopping any running Streamlit processes...
+taskkill /F /IM streamlit.exe 2>nul
+timeout /t 2 /nobreak >nul
+echo Starting Streamlit app...
+streamlit run app.py

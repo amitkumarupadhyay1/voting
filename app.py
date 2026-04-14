@@ -230,15 +230,22 @@ _defaults = {
     'confirm_start':False,'confirm_stop':False,'confirm_reset':False,
     'last_activity':time.time(),'vote_step':0,
     'show_add':False,'show_edit':False,'show_reset':False,'show_del':False,
-    'show_change_pwd':False,
+    'show_change_pwd':False,'saved_votes':None,'saved_votes_timestamp':None,
+    'warning_autosave_done':False,
 }
 for k, v in _defaults.items():
     if k not in st.session_state:
         st.session_state[k] = v
 
-# Session timeout — 15 min
+# Session timeout — 15 min (900 seconds)
+SESSION_TIMEOUT = 900
+WARNING_THRESHOLD = 120  # Show warning at 2 minutes remaining
+
 if st.session_state.user_type is not None:
-    if time.time() - st.session_state.last_activity > 900:
+    elapsed = time.time() - st.session_state.last_activity
+    remaining = SESSION_TIMEOUT - elapsed
+    
+    if elapsed > SESSION_TIMEOUT:
         who = st.session_state.user_data[0] if st.session_state.user_data else 'admin'
         audit.log('SESSION_TIMEOUT', who)
         for k, v in _defaults.items():
@@ -249,9 +256,59 @@ if st.session_state.user_type is not None:
         st.session_state.last_activity = time.time()
 
 # ─────────────────────────────────────────────────────────────────────────────
+# VOTE PROGRESS PERSISTENCE HELPERS
+# ─────────────────────────────────────────────────────────────────────────────
+def save_vote_progress(student_id: str, temp_votes: dict):
+    """
+    Save temp_votes to session storage with timestamp.
+    Serializes vote selections to JSON format.
+    """
+    import json
+    if not temp_votes:
+        return
+    
+    vote_data = {
+        'student_id': student_id,
+        'votes': temp_votes,
+        'timestamp': time.time(),
+        'saved_at': pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')
+    }
+    
+    # Serialize to JSON and store in session state
+    st.session_state.saved_votes = json.dumps(vote_data)
+    st.session_state.saved_votes_timestamp = vote_data['timestamp']
+
+def load_vote_progress(student_id: str) -> dict:
+    """
+    Load saved vote progress from session storage.
+    Returns empty dict if no saved data or if data is invalid.
+    """
+    import json
+    if not st.session_state.saved_votes:
+        return {}
+    
+    try:
+        vote_data = json.loads(st.session_state.saved_votes)
+        
+        # Validate the saved data belongs to current student
+        if vote_data.get('student_id') != student_id:
+            return {}
+        
+        # Return the votes dictionary
+        return vote_data.get('votes', {})
+    except (json.JSONDecodeError, KeyError):
+        return {}
+
+def clear_vote_progress():
+    """Clear saved vote progress from session storage."""
+    st.session_state.saved_votes = None
+    st.session_state.saved_votes_timestamp = None
+
+# ─────────────────────────────────────────────────────────────────────────────
 # HERO BANNER
 # ─────────────────────────────────────────────────────────────────────────────
 from pages.components import phase_badge
+from pages.results import render_results
 
 phase = election.get_phase()
 is_live = election.is_live()
@@ -263,6 +320,42 @@ st.markdown(f"""
     <div>{status_html}</div>
 </div>
 """, unsafe_allow_html=True)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SESSION WARNING (Task 3.3)
+# ─────────────────────────────────────────────────────────────────────────────
+if st.session_state.user_type is not None:
+    from pages.components import session_warning_banner
+    
+    elapsed = time.time() - st.session_state.last_activity
+    remaining = SESSION_TIMEOUT - elapsed
+    
+    # Show warning when less than 2 minutes remain (Task 3.3.1)
+    if 0 < remaining <= WARNING_THRESHOLD:
+        st.markdown(session_warning_banner(remaining), unsafe_allow_html=True)
+        
+        # Extend session button (Task 3.3.2)
+        col1, col2, col3 = st.columns([1, 1, 1])
+        with col2:
+            if st.button('🔄 Extend Session', use_container_width=True, type='primary', key='extend_session'):
+                st.session_state.last_activity = time.time()
+                # Auto-save current progress for students (Task 3.3.3)
+                if st.session_state.user_type == 'student' and st.session_state.user_data:
+                    if st.session_state.get('temp_votes'):
+                        save_vote_progress(st.session_state.user_data[0], st.session_state.temp_votes)
+                st.success('✅ Session extended for 15 more minutes!')
+                time.sleep(1)
+                st.rerun()
+        
+        # Auto-save progress when warning appears (Task 3.3.3)
+        if st.session_state.user_type == 'student' and st.session_state.user_data:
+            if st.session_state.get('temp_votes') and not st.session_state.get('warning_autosave_done'):
+                save_vote_progress(st.session_state.user_data[0], st.session_state.temp_votes)
+                st.session_state.warning_autosave_done = True
+        
+        # Auto-refresh to update countdown
+        time.sleep(1)
+        st.rerun()
 
 random.seed(int(time.time() // 3600))
 fact = random.choice(CIVIC_FACTS)
@@ -360,9 +453,9 @@ elif st.session_state.user_type == 'admin':
             unsafe_allow_html=True
         )
 
-    t1, t2, t3, t4, t5, t6, t7 = st.tabs([
+    t1, t2, t3, t4, t5, t6, t7, t8 = st.tabs([
         '📥 Import', '👥 Students', '🏛️ Committees',
-        '🎯 Nominations', '🎛️ Election', '📊 Results', '🔍 Records'
+        '🎯 Nominations', '🎛️ Election', '📊 Results', '📈 Analytics', '🔍 Records'
     ])
 
     # ── TAB 1: IMPORT ─────────────────────────────────────────────────────────
@@ -570,7 +663,7 @@ elif st.session_state.user_type == 'admin':
                 for r in rows:
                     info = ci(r[1])
                     desc = r[3] if len(r) > 3 and r[3] else info['desc']
-                    max_w = r[4] if len(r) > 4 else 1
+                    max_w = int(r[4]) if len(r) > 4 and r[4] else 1
                     pos_label = f"{max_w} position{'s' if max_w > 1 else ''}"
                     cc1, cc2 = st.columns([7, 1])
                     cc1.markdown(
@@ -903,14 +996,17 @@ elif st.session_state.user_type == 'admin':
         sc4.metric('Turnout', f"{stats['participation_rate']:.1f}%")
 
         if stats['not_voted'] > 0:
-            with st.expander(f"👀 {stats['not_voted']} student(s) haven't voted yet"):
+            with st.expander(f"👀 View {stats['not_voted']} student(s) who haven't voted yet"):
                 pv = db.execute(
                     'SELECT admission_no,name,class,house FROM students WHERE has_voted=0 ORDER BY name'
                 ).fetchall()
-                st.dataframe(
-                    pd.DataFrame(pv, columns=['Adm No','Name','Class','House']),
-                    use_container_width=True, hide_index=True
-                )
+                if pv:
+                    st.dataframe(
+                        pd.DataFrame(pv, columns=['Adm No','Name','Class','House']),
+                        use_container_width=True, hide_index=True
+                    )
+                else:
+                    st.info("All students have voted!")
 
     # ── TAB 6: RESULTS ────────────────────────────────────────────────────────
     with t6:
@@ -1110,8 +1206,133 @@ elif st.session_state.user_type == 'admin':
             else:
                 st.info("No audit logs yet.")
 
-    # ── TAB 7: RECORDS ────────────────────────────────────────────────────────
+    # ── TAB 7: ANALYTICS ──────────────────────────────────────────────────────
     with t7:
+        st.markdown("### 📈 Election Analytics Dashboard")
+        st.markdown(
+            '<div class="info-box">📊 Comprehensive analytics and insights about the election</div>',
+            unsafe_allow_html=True
+        )
+        
+        # Metrics Grid Layout
+        st.markdown("#### 🎯 Key Metrics")
+        
+        # Row 1: Overall Statistics
+        m1, m2, m3, m4 = st.columns(4)
+        
+        stats = election.get_statistics()
+        
+        with m1:
+            st.markdown(f"""
+            <div class="stat-card">
+                <div class="stat-num">{stats['total_students']}</div>
+                <div class="stat-label">Total Students</div>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with m2:
+            st.markdown(f"""
+            <div class="stat-card">
+                <div class="stat-num">{stats['voted_students']}</div>
+                <div class="stat-label">Students Voted</div>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with m3:
+            st.markdown(f"""
+            <div class="stat-card">
+                <div class="stat-num">{stats['participation_rate']:.1f}%</div>
+                <div class="stat-label">Participation Rate</div>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with m4:
+            total_votes = stats.get('total_votes', 0)
+            st.markdown(f"""
+            <div class="stat-card">
+                <div class="stat-num">{total_votes}</div>
+                <div class="stat-label">Total Votes Cast</div>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        st.markdown('<br>', unsafe_allow_html=True)
+        
+        # Row 2: Committee Statistics
+        st.markdown("#### 🏛️ Committee Statistics")
+        
+        committees = Committee(db).get_all()
+        school_committees = [c for c in committees if c[2] == 'School']
+        house_committees = [c for c in committees if c[2] == 'House']
+        
+        c1, c2, c3, c4 = st.columns(4)
+        
+        with c1:
+            st.markdown(f"""
+            <div class="stat-card">
+                <div class="stat-num">{len(committees)}</div>
+                <div class="stat-label">Total Committees</div>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with c2:
+            st.markdown(f"""
+            <div class="stat-card">
+                <div class="stat-num">{len(school_committees)}</div>
+                <div class="stat-label">School Committees</div>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with c3:
+            st.markdown(f"""
+            <div class="stat-card">
+                <div class="stat-num">{len(house_committees)}</div>
+                <div class="stat-label">House Committees</div>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with c4:
+            total_candidates = len(Candidate(db).get_all())
+            st.markdown(f"""
+            <div class="stat-card">
+                <div class="stat-num">{total_candidates}</div>
+                <div class="stat-label">Total Candidates</div>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        st.markdown('<br>', unsafe_allow_html=True)
+        
+        # Row 3: House Participation
+        st.markdown("#### 🏠 House Participation")
+        
+        house_cols = st.columns(4)
+        for i, house in enumerate(voting.HOUSES):
+            total_h = db.execute('SELECT COUNT(*) FROM students WHERE house=?', (house,)).fetchone()[0]
+            voted_h = db.execute('SELECT COUNT(*) FROM students WHERE house=? AND has_voted=1', (house,)).fetchone()[0]
+            pct_h = (voted_h / total_h * 100) if total_h > 0 else 0
+            h_ = hm(house)
+            
+            with house_cols[i]:
+                st.markdown(f"""
+                <div class="house-card" style="background:{h_['bg']};border-color:{h_['border']};">
+                    <div style="font-size:2rem;">{h_['icon']}</div>
+                    <div style="font-weight:700;color:{h_['color']};font-size:1rem;">{house}</div>
+                    <div style="font-size:1.4rem;font-weight:800;color:white;">{voted_h}/{total_h}</div>
+                    <div style="font-size:.78rem;color:#94a3b8;">{pct_h:.1f}% voted</div>
+                </div>
+                """, unsafe_allow_html=True)
+        
+        st.markdown('<br>', unsafe_allow_html=True)
+        
+        # Placeholder sections for future analytics (Tasks 4.2-4.5)
+        st.markdown("#### 📊 Detailed Analytics")
+        st.markdown(
+            '<div class="info-box">💡 More detailed analytics coming soon: '
+            'Class-wise breakdown, Voting timeline, Committee popularity metrics</div>',
+            unsafe_allow_html=True
+        )
+
+    # ── TAB 8: RECORDS ────────────────────────────────────────────────────────
+    with t8:
         st.markdown(
             '<div class="info-box">🔒 Anonymous records only — vote tokens are shown, '
             'not voter identities.</div>',
@@ -1162,6 +1383,59 @@ elif st.session_state.user_type == 'student':
     h     = hm(fresh[4])
     grp   = voting.get_eligible_house_group(fresh[2])
 
+    # ── Check for saved votes on login (Task 3.2.1) ──────────────────────────
+    # Only check once per session, not on every rerun
+    if 'checked_saved_votes' not in st.session_state:
+        st.session_state.checked_saved_votes = False
+    
+    if not st.session_state.checked_saved_votes and fresh[7] == 0:  # Not voted yet
+        saved_votes = load_vote_progress(fresh[0])
+        
+        if saved_votes:
+            # Task 3.2.2: Validate saved votes are still valid
+            valid_votes = {}
+            invalid_reasons = []
+            
+            # Check if election is still live
+            if not election.is_live():
+                invalid_reasons.append("Election is no longer live")
+            else:
+                # Validate each saved vote
+                for comm_key, candidate_adm in saved_votes.items():
+                    if candidate_adm == ABSTAIN:
+                        valid_votes[comm_key] = candidate_adm
+                        continue
+                    
+                    # Check if candidate is still approved
+                    db_committee = comm_key.replace('House-', '')
+                    is_valid, msg = voting.verify_vote_integrity(fresh[0], candidate_adm, db_committee)
+                    
+                    if is_valid:
+                        valid_votes[comm_key] = candidate_adm
+                    else:
+                        invalid_reasons.append(f"{db_committee}: {msg}")
+            
+            # Task 3.2.3: Show "Resume voting" option if valid votes found
+            if valid_votes and not invalid_reasons:
+                st.session_state.has_valid_saved_votes = True
+                st.session_state.valid_saved_votes = valid_votes
+                st.session_state.saved_votes_count = len([v for v in valid_votes.values() if v != ABSTAIN])
+                st.session_state.saved_votes_timestamp = st.session_state.saved_votes_timestamp
+            elif valid_votes and invalid_reasons:
+                # Some votes are valid, some are not
+                st.session_state.has_valid_saved_votes = True
+                st.session_state.valid_saved_votes = valid_votes
+                st.session_state.saved_votes_count = len([v for v in valid_votes.values() if v != ABSTAIN])
+                st.session_state.saved_votes_warnings = invalid_reasons
+            else:
+                # No valid votes, clear saved data
+                clear_vote_progress()
+                st.session_state.has_valid_saved_votes = False
+        else:
+            st.session_state.has_valid_saved_votes = False
+        
+        st.session_state.checked_saved_votes = True
+
     # ── Welcome header ──
     wc1, wc2 = st.columns([8, 1])
     with wc1:
@@ -1185,6 +1459,61 @@ elif st.session_state.user_type == 'student':
             for k, v in _defaults.items():
                 st.session_state[k] = v
             st.rerun()
+
+    # ── Resume voting banner (Task 3.2.3) ─────────────────────────────────────
+    if st.session_state.get('has_valid_saved_votes', False) and fresh[7] == 0:
+        saved_count = st.session_state.get('saved_votes_count', 0)
+        warnings = st.session_state.get('saved_votes_warnings', [])
+        
+        # Format timestamp
+        import pandas as pd
+        if st.session_state.saved_votes_timestamp:
+            saved_time = pd.Timestamp.fromtimestamp(st.session_state.saved_votes_timestamp).strftime('%b %d, %Y at %I:%M %p')
+        else:
+            saved_time = "recently"
+        
+        st.markdown(f"""
+        <div style="background:linear-gradient(135deg,rgba(245,158,11,.15),rgba(251,191,36,.08));
+                    border:2px solid rgba(245,158,11,.4);border-radius:18px;
+                    padding:24px;margin:16px 0;">
+            <div style="display:flex;align-items:center;gap:16px;">
+                <span style="font-size:2.5rem;">💾</span>
+                <div style="flex:1;">
+                    <div style="font-size:1.2rem;font-weight:800;color:#fbbf24;">Resume Your Voting Session</div>
+                    <div style="color:#94a3b8;margin-top:6px;font-size:.9rem;">
+                        You have <strong>{saved_count} vote{'s' if saved_count != 1 else ''}</strong> saved from {saved_time}.
+                        {' Some selections may no longer be valid.' if warnings else ' All selections are still valid.'}
+                    </div>
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        if warnings:
+            with st.expander("⚠️ View validation warnings"):
+                for warning in warnings:
+                    st.warning(warning)
+        
+        rc1, rc2 = st.columns(2)
+        with rc1:
+            if st.button('🔄 Resume Voting', use_container_width=True, type='primary'):
+                # Load saved votes into temp_votes
+                st.session_state.temp_votes = st.session_state.valid_saved_votes.copy()
+                st.session_state.has_valid_saved_votes = False  # Hide banner
+                audit.log('RESUME_VOTING', fresh[0], f'Resumed with {saved_count} saved votes')
+                st.success(f"✅ Resumed with {saved_count} saved vote{'s' if saved_count != 1 else ''}!")
+                time.sleep(0.5)
+                st.rerun()
+        with rc2:
+            if st.button('🆕 Start Fresh', use_container_width=True, type='secondary'):
+                # Clear saved votes and start fresh
+                clear_vote_progress()
+                st.session_state.temp_votes = {}
+                st.session_state.has_valid_saved_votes = False
+                audit.log('START_FRESH', fresh[0], 'Cleared saved votes')
+                st.info("Starting fresh voting session...")
+                time.sleep(0.5)
+                st.rerun()
 
     # ── ALREADY VOTED ─────────────────────────────────────────────────────────
     if fresh[7] == 1:
@@ -1236,7 +1565,14 @@ elif st.session_state.user_type == 'student':
         st.stop()
 
     # ── STUDENT TABS ──────────────────────────────────────────────────────────
-    stab1, stab2 = st.tabs(['🗳️ Cast Your Vote', '✋ Nominate Yourself'])
+    # Check election phase to determine if results tab should be shown
+    show_results = voting.results_public()
+    
+    # Create tabs based on election phase
+    if show_results:
+        stab1, stab2, stab3 = st.tabs(['🗳️ Cast Your Vote', '✋ Nominate Yourself', '📊 View Results'])
+    else:
+        stab1, stab2 = st.tabs(['🗳️ Cast Your Vote', '✋ Nominate Yourself'])
 
     # ── SELF-NOMINATION ───────────────────────────────────────────────────────
     with stab2:
@@ -1320,6 +1656,33 @@ elif st.session_state.user_type == 'student':
                 nom_grp_s  = grp
                 nom_cls_s  = None
                 st.markdown(f'<div class="info-box">{h["emoji"]} You will represent <strong>{fresh[4]} House</strong> · <strong>{grp}</strong> group.</div>', unsafe_allow_html=True)
+
+            # Show existing approved candidates for selected committee
+            if nom_comm_s:
+                existing_candidates = db.execute('''
+                    SELECT c.admission_no, s.name, s.class, s.house, c.manifesto
+                    FROM candidates c
+                    LEFT JOIN students s ON LOWER(TRIM(c.admission_no)) = LOWER(TRIM(s.admission_no))
+                    WHERE c.committee_name = ? AND c.status = "approved"
+                    ORDER BY s.name
+                ''', (nom_comm_s,)).fetchall()
+                
+                if existing_candidates:
+                    cand_count = len(existing_candidates)
+                    with st.expander(f'👥 View Candidates ({cand_count} candidate{"s" if cand_count != 1 else ""})', expanded=False):
+                        st.markdown(f'<div style="color:#94a3b8;font-size:.88rem;margin-bottom:16px;">These students have already been approved for <strong>{nom_comm_s}</strong>:</div>', unsafe_allow_html=True)
+                        for adm, name, cls, house, manifesto in existing_candidates:
+                            h_meta = hm(house or '')
+                            manifesto_html = f'<div class="cand-manifesto">"{manifesto}"</div>' if manifesto else '<div class="cand-manifesto" style="opacity:0.6;">No manifesto provided</div>'
+                            st.markdown(f"""
+                            <div class="cand-card" style="cursor:default;margin-bottom:12px;">
+                                <span class="cand-avatar">{avatar(name or adm)}</span>
+                                <div class="cand-name">{name or adm}</div>
+                                <div class="cand-meta">Class {cls or '?'}</div>
+                                <div class="cand-house" style="color:{h_meta['color']};">{h_meta['emoji']} {house or '?'} House</div>
+                                {manifesto_html}
+                            </div>
+                            """, unsafe_allow_html=True)
 
             nom_man_s = st.text_area(
                 '✍️ Your Election Manifesto',
@@ -1461,6 +1824,8 @@ elif st.session_state.user_type == 'student':
                             ):
                                 vote_choices[comm_key] = ABSTAIN
                                 st.session_state.temp_votes = vote_choices
+                                # Auto-save vote progress
+                                save_vote_progress(fresh[0], vote_choices)
                                 st.rerun()
                         else:
                             d  = data_map[opt_key]
@@ -1484,6 +1849,8 @@ elif st.session_state.user_type == 'student':
                             ):
                                 vote_choices[comm_key] = opt_key
                                 st.session_state.temp_votes = vote_choices
+                                # Auto-save vote progress
+                                save_vote_progress(fresh[0], vote_choices)
                                 st.rerun()
                 st.markdown('<br>', unsafe_allow_html=True)
                 return vote_choices
@@ -1582,6 +1949,8 @@ elif st.session_state.user_type == 'student':
                     success, msg = voting.submit_votes(fresh[0], vote_choices)
                     if success:
                         audit.log('VOTE_SUBMITTED', fresh[0], msg)
+                        # Clear saved vote progress after successful submission
+                        clear_vote_progress()
                         st.markdown(confetti_html(), unsafe_allow_html=True)
                         st.markdown(f"""
                         <div style="background:linear-gradient(135deg,rgba(16,185,129,.2),rgba(52,211,153,.1));
@@ -1606,5 +1975,25 @@ elif st.session_state.user_type == 'student':
                 if st.button('🔙 Go Back & Edit', use_container_width=True):
                     st.session_state.review_votes = False
                     st.rerun()
+
+    # ── VIEW RESULTS TAB ──────────────────────────────────────────────────────
+    if show_results:
+        with stab3:
+            st.markdown("""
+            <div style="background:linear-gradient(135deg,rgba(16,185,129,.12),rgba(52,211,153,.08));
+                        border:1px solid rgba(16,185,129,.3);border-radius:18px;padding:24px;margin-bottom:20px;">
+                <div style="font-size:1.2rem;font-weight:800;color:white;">📊 Election Results</div>
+                <div style="color:#94a3b8;margin-top:8px;line-height:1.6;">
+                    The election has concluded. Here are the final results for all committees.
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Fetch student's votes to highlight their choices
+            my_votes = voting.get_student_votes(fresh[0])
+            
+            # Fetch and display results using the existing render_results function
+            results = voting.get_results()
+            render_results(results, show_tie_break=False, student_votes=my_votes)
 
     st.markdown(f'<div class="civic-fact" style="margin-top:32px;">💡 {fact}</div>', unsafe_allow_html=True)

@@ -80,7 +80,7 @@ def box(kind: str, text: str) -> str:
         f'font-size:.88rem;color:{fg};">{text}</div>'
     )
 
-def result_card_html(rank: int, cand: dict, max_winners: int, total_votes: int) -> str:
+def result_card_html(rank: int, cand: dict, max_winners: int, total_votes: int, is_student_choice: bool = False) -> str:
     ph       = hm(cand['house'])
     is_win   = cand.get('is_winner', False)
     is_tied  = cand.get('is_tied', False)
@@ -89,12 +89,20 @@ def result_card_html(rank: int, cand: dict, max_winners: int, total_votes: int) 
     card_cls = 'tied' if is_tied else ('winner' if is_win else '')
     tie_tag  = ' <span style="color:#f59e0b;font-size:.75rem;">⚖️ TIE</span>' if is_tied else ''
     win_tag  = ' <span style="color:#10b981;font-size:.75rem;">🏆</span>' if (is_win and not is_tied) else ''
+    choice_tag = ' <span style="color:#6366f1;font-size:.75rem;">👤 Your Vote</span>' if is_student_choice else ''
+    
+    # Add visual indicator for student's choice
+    card_border = ''
+    if is_student_choice:
+        card_cls += ' student-choice'
+        card_border = 'border-left:4px solid #6366f1;'
+    
     return f"""
-    <div class="result-card {card_cls}">
+    <div class="result-card {card_cls}" style="{card_border}">
         <span class="result-rank">{rank_ico}</span>
         <span style="font-size:1.4rem;">{avatar(cand['name'])}</span>
         <div class="result-info">
-            <div class="result-name">{cand['name']}{win_tag}{tie_tag}</div>
+            <div class="result-name">{cand['name']}{win_tag}{tie_tag}{choice_tag}</div>
             <div class="result-sub">Class {cand['class']} &nbsp;·&nbsp;
                 <span style="color:{ph['color']}">{cand['house']} House</span>
             </div>
@@ -142,3 +150,58 @@ def confetti_html() -> str:
         '100%{transform:translateY(110vh) rotate(720deg);opacity:0}}</style>'
         + ''.join(pieces)
     )
+
+def session_warning_banner(remaining_seconds: int) -> str:
+    """
+    Display session expiration warning with countdown timer.
+    Shows when less than 2 minutes remain in the session.
+    """
+    minutes = int(remaining_seconds // 60)
+    seconds = int(remaining_seconds % 60)
+    
+    # Color coding based on urgency
+    if remaining_seconds > 60:
+        color = '#f59e0b'  # Orange for 1-2 minutes
+        bg_color = 'rgba(245,158,11,.15)'
+        border_color = 'rgba(245,158,11,.4)'
+    else:
+        color = '#ef4444'  # Red for < 1 minute
+        bg_color = 'rgba(239,68,68,.15)'
+        border_color = 'rgba(239,68,68,.5)'
+    
+    return f"""
+    <div style="position:fixed;top:80px;left:50%;transform:translateX(-50%);
+                z-index:10000;width:90%;max-width:600px;
+                background:{bg_color};backdrop-filter:blur(20px);
+                border:2px solid {border_color};border-radius:16px;
+                padding:20px 24px;box-shadow:0 8px 32px rgba(0,0,0,.3);
+                animation:slideDown 0.3s ease-out;">
+        <div style="display:flex;align-items:center;gap:16px;">
+            <span style="font-size:2rem;">⏱️</span>
+            <div style="flex:1;">
+                <div style="font-size:1.1rem;font-weight:800;color:{color};">
+                    Session Expiring Soon
+                </div>
+                <div style="color:#cbd5e1;margin-top:4px;font-size:.9rem;">
+                    Your session will expire in <strong style="color:white;">{minutes:02d}:{seconds:02d}</strong>
+                </div>
+                <div style="color:#94a3b8;margin-top:2px;font-size:.8rem;">
+                    Your progress has been auto-saved
+                </div>
+            </div>
+        </div>
+    </div>
+    <style>
+    @keyframes slideDown {{
+        from {{
+            opacity: 0;
+            transform: translateX(-50%) translateY(-20px);
+        }}
+        to {{
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+        }}
+    }}
+    </style>
+    """
+
