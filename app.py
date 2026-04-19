@@ -4,6 +4,7 @@ Bulletproof edition — thread-safe, race-condition-proof, election-ethics compl
 """
 import streamlit as st
 import pandas as pd
+import plotly.graph_objects as go
 import time, random
 from models import Database, Student, Vote, Candidate, Committee, Election, AuditLog
 from auth import Auth
@@ -1323,13 +1324,688 @@ elif st.session_state.user_type == 'admin':
         
         st.markdown('<br>', unsafe_allow_html=True)
         
-        # Placeholder sections for future analytics (Tasks 4.2-4.5)
-        st.markdown("#### 📊 Detailed Analytics")
-        st.markdown(
-            '<div class="info-box">💡 More detailed analytics coming soon: '
-            'Class-wise breakdown, Voting timeline, Committee popularity metrics</div>',
-            unsafe_allow_html=True
-        )
+        # Task 4.2: Class-wise participation breakdown
+        st.markdown("#### 📚 Class-wise Participation Breakdown")
+        
+        # Sub-task 4.2.1 & 4.2.2: Query votes grouped by class and calculate participation rate
+        class_data = db.execute('''
+            SELECT 
+                class,
+                COUNT(*) as total,
+                SUM(has_voted) as voted,
+                ROUND(CAST(SUM(has_voted) AS FLOAT) / COUNT(*) * 100, 1) as participation_rate
+            FROM students
+            GROUP BY class
+            ORDER BY class
+        ''').fetchall()
+        
+        if class_data:
+            # Convert to list of dicts for easier manipulation
+            class_stats = [
+                {
+                    'class': row[0],
+                    'total': row[1],
+                    'voted': row[2],
+                    'participation_rate': row[3]
+                }
+                for row in class_data
+            ]
+            
+            # Sub-task 4.2.4: Identify top 3 and bottom 3 classes
+            sorted_by_rate = sorted(class_stats, key=lambda x: x['participation_rate'], reverse=True)
+            top_3_classes = set(c['class'] for c in sorted_by_rate[:3])
+            bottom_3_classes = set(c['class'] for c in sorted_by_rate[-3:])
+            
+            # Sub-task 4.2.3: Display as horizontal bar chart
+            # Prepare data for chart
+            classes = [c['class'] for c in class_stats]
+            rates = [c['participation_rate'] for c in class_stats]
+            voted = [c['voted'] for c in class_stats]
+            total = [c['total'] for c in class_stats]
+            
+            # Color bars based on top 3 / bottom 3
+            colors = []
+            for c in class_stats:
+                if c['class'] in top_3_classes:
+                    colors.append('#22c55e')  # Green for top 3
+                elif c['class'] in bottom_3_classes:
+                    colors.append('#ef4444')  # Red for bottom 3
+                else:
+                    colors.append('#6366f1')  # Default purple
+            
+            fig = go.Figure()
+            
+            fig.add_trace(go.Bar(
+                y=classes,
+                x=rates,
+                orientation='h',
+                marker=dict(
+                    color=colors,
+                    line=dict(color='rgba(255,255,255,0.2)', width=1)
+                ),
+                text=[f"{r}% ({v}/{t})" for r, v, t in zip(rates, voted, total)],
+                textposition='auto',
+                hovertemplate='<b>Class %{y}</b><br>' +
+                              'Participation: %{x}%<br>' +
+                              '<extra></extra>'
+            ))
+            
+            fig.update_layout(
+                title=dict(
+                    text='Participation Rate by Class',
+                    font=dict(size=16, color='white')
+                ),
+                xaxis=dict(
+                    title='Participation Rate (%)',
+                    range=[0, 100],
+                    gridcolor='rgba(255,255,255,0.1)',
+                    color='white'
+                ),
+                yaxis=dict(
+                    title='Class',
+                    gridcolor='rgba(255,255,255,0.1)',
+                    color='white'
+                ),
+                plot_bgcolor='rgba(0,0,0,0)',
+                paper_bgcolor='rgba(0,0,0,0)',
+                font=dict(color='white'),
+                height=400,
+                margin=dict(l=60, r=40, t=60, b=60)
+            )
+            
+            st.plotly_chart(fig, use_container_width=True)
+            
+            # Display top 3 and bottom 3 in cards
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.markdown("##### 🏆 Top 3 Performing Classes")
+                for i, cls in enumerate(sorted_by_rate[:3], 1):
+                    medal = ['🥇', '🥈', '🥉'][i-1]
+                    st.markdown(f"""
+                    <div class="stat-card" style="background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.3);">
+                        <div style="font-size:1.5rem;">{medal} Class {cls['class']}</div>
+                        <div style="font-size:1.2rem;font-weight:700;color:#22c55e;">{cls['participation_rate']}%</div>
+                        <div style="font-size:0.9rem;color:#94a3b8;">{cls['voted']} out of {cls['total']} students voted</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+            
+            with col2:
+                st.markdown("##### 📉 Bottom 3 Performing Classes")
+                for i, cls in enumerate(sorted_by_rate[-3:][::-1], 1):
+                    st.markdown(f"""
+                    <div class="stat-card" style="background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);">
+                        <div style="font-size:1.5rem;">Class {cls['class']}</div>
+                        <div style="font-size:1.2rem;font-weight:700;color:#ef4444;">{cls['participation_rate']}%</div>
+                        <div style="font-size:0.9rem;color:#94a3b8;">{cls['voted']} out of {cls['total']} students voted</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+        else:
+            st.info("No class data available yet.")
+        
+        st.markdown('<br>', unsafe_allow_html=True)
+        
+        # Task 4.3: House-wise participation breakdown
+        st.markdown("#### 🏠 House-wise Participation Breakdown")
+        
+        # Sub-task 4.3.1 & 4.3.2: Query votes grouped by house and calculate participation rate
+        house_data = db.execute('''
+            SELECT 
+                house,
+                COUNT(*) as total,
+                SUM(has_voted) as voted,
+                ROUND(CAST(SUM(has_voted) AS FLOAT) / COUNT(*) * 100, 1) as participation_rate
+            FROM students
+            GROUP BY house
+            ORDER BY participation_rate DESC
+        ''').fetchall()
+        
+        if house_data:
+            # Convert to list of dicts for easier manipulation
+            house_stats = [
+                {
+                    'house': row[0],
+                    'total': row[1],
+                    'voted': row[2],
+                    'participation_rate': row[3]
+                }
+                for row in house_data
+            ]
+            
+            # Sub-task 4.3.3: Display with house colors
+            # Prepare data for chart
+            houses = [h['house'] for h in house_stats]
+            rates = [h['participation_rate'] for h in house_stats]
+            voted = [h['voted'] for h in house_stats]
+            total = [h['total'] for h in house_stats]
+            
+            # Use house-specific colors
+            colors = [hm(h['house'])['color'] for h in house_stats]
+            
+            fig_house = go.Figure()
+            
+            fig_house.add_trace(go.Bar(
+                y=houses,
+                x=rates,
+                orientation='h',
+                marker=dict(
+                    color=colors,
+                    line=dict(color='rgba(255,255,255,0.2)', width=1)
+                ),
+                text=[f"{r}% ({v}/{t})" for r, v, t in zip(rates, voted, total)],
+                textposition='auto',
+                hovertemplate='<b>%{y} House</b><br>' +
+                              'Participation: %{x}%<br>' +
+                              '<extra></extra>'
+            ))
+            
+            fig_house.update_layout(
+                title=dict(
+                    text='Participation Rate by House',
+                    font=dict(size=16, color='white')
+                ),
+                xaxis=dict(
+                    title='Participation Rate (%)',
+                    range=[0, 100],
+                    gridcolor='rgba(255,255,255,0.1)',
+                    color='white'
+                ),
+                yaxis=dict(
+                    title='House',
+                    gridcolor='rgba(255,255,255,0.1)',
+                    color='white'
+                ),
+                plot_bgcolor='rgba(0,0,0,0)',
+                paper_bgcolor='rgba(0,0,0,0)',
+                font=dict(color='white'),
+                height=350,
+                margin=dict(l=80, r=40, t=60, b=60)
+            )
+            
+            st.plotly_chart(fig_house, use_container_width=True)
+            
+            # Sub-task 4.3.4: Add house competition leaderboard
+            st.markdown("##### 🏆 House Competition Leaderboard")
+            
+            leaderboard_cols = st.columns(4)
+            
+            for i, house_stat in enumerate(house_stats):
+                house_name = house_stat['house']
+                h_meta = hm(house_name)
+                rank = i + 1
+                rank_icon = ['🥇', '🥈', '🥉', '4️⃣'][i] if i < 4 else '🏠'
+                
+                with leaderboard_cols[i]:
+                    st.markdown(f"""
+                    <div class="house-card" style="background:{h_meta['bg']};border:2px solid {h_meta['border']};border-radius:16px;padding:20px;text-align:center;">
+                        <div style="font-size:2.5rem;margin-bottom:8px;">{rank_icon}</div>
+                        <div style="font-size:1.8rem;margin-bottom:4px;">{h_meta['icon']}</div>
+                        <div style="font-weight:800;color:{h_meta['color']};font-size:1.1rem;margin-bottom:8px;">{house_name}</div>
+                        <div style="font-size:1.8rem;font-weight:900;color:white;margin-bottom:4px;">{house_stat['participation_rate']}%</div>
+                        <div style="font-size:0.85rem;color:#94a3b8;margin-bottom:8px;">{house_stat['voted']}/{house_stat['total']} students</div>
+                        <div style="font-size:0.75rem;color:{h_meta['color']};font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Rank #{rank}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+            
+            # Show house competition summary
+            st.markdown('<br>', unsafe_allow_html=True)
+            
+            winner_house = house_stats[0]
+            h_winner = hm(winner_house['house'])
+            
+            st.markdown(f"""
+            <div class="info-box" style="background:{h_winner['bg']};border:2px solid {h_winner['border']};text-align:center;padding:24px;">
+                <div style="font-size:1.5rem;margin-bottom:8px;">{h_winner['icon']} 🏆</div>
+                <div style="font-size:1.2rem;font-weight:700;color:{h_winner['color']};margin-bottom:4px;">
+                    {winner_house['house']} House Leads the Competition!
+                </div>
+                <div style="font-size:0.95rem;color:#94a3b8;">
+                    With {winner_house['participation_rate']}% participation rate, {winner_house['house']} House shows the strongest democratic engagement.
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+        else:
+            st.info("No house data available yet.")
+        
+        st.markdown('<br>', unsafe_allow_html=True)
+        
+        # Task 4.4: Voting timeline (hourly trends)
+        st.markdown("#### ⏰ Voting Timeline (Hourly Trends)")
+        
+        # Sub-task 4.4.1: Parse vote timestamps by hour
+        vote_timestamps = db.execute('''
+            SELECT created_at
+            FROM votes
+            ORDER BY created_at
+        ''').fetchall()
+        
+        if vote_timestamps and len(vote_timestamps) > 0:
+            import pandas as pd
+            from datetime import datetime
+            
+            # Parse timestamps and group by hour
+            timestamps = [row[0] for row in vote_timestamps]
+            df_votes = pd.DataFrame({'timestamp': timestamps})
+            
+            # Convert to datetime and extract hour
+            df_votes['datetime'] = pd.to_datetime(df_votes['timestamp'])
+            df_votes['date'] = df_votes['datetime'].dt.date
+            df_votes['hour'] = df_votes['datetime'].dt.hour
+            df_votes['date_hour'] = df_votes['datetime'].dt.strftime('%Y-%m-%d %H:00')
+            
+            # Group by hour and count votes
+            hourly_counts = df_votes.groupby('date_hour').size().reset_index(name='votes')
+            hourly_counts['datetime'] = pd.to_datetime(hourly_counts['date_hour'])
+            hourly_counts = hourly_counts.sort_values('datetime')
+            
+            # Sub-task 4.4.4: Calculate average votes per hour
+            total_votes = len(vote_timestamps)
+            hours_with_votes = len(hourly_counts)
+            avg_votes_per_hour = total_votes / hours_with_votes if hours_with_votes > 0 else 0
+            
+            # Sub-task 4.4.3: Identify peak voting hours
+            peak_hour_data = hourly_counts.loc[hourly_counts['votes'].idxmax()]
+            peak_hour = peak_hour_data['date_hour']
+            peak_votes = peak_hour_data['votes']
+            
+            # Display key metrics
+            metric_cols = st.columns(3)
+            
+            with metric_cols[0]:
+                st.markdown(f"""
+                <div class="stat-card" style="background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.3);">
+                    <div style="font-size:2rem;font-weight:800;color:#818cf8;">{total_votes}</div>
+                    <div style="font-size:0.85rem;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;">Total Votes Cast</div>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            with metric_cols[1]:
+                st.markdown(f"""
+                <div class="stat-card" style="background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.3);">
+                    <div style="font-size:2rem;font-weight:800;color:#22c55e;">{avg_votes_per_hour:.1f}</div>
+                    <div style="font-size:0.85rem;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;">Avg Votes/Hour</div>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            with metric_cols[2]:
+                peak_time = pd.to_datetime(peak_hour).strftime('%I:%M %p')
+                st.markdown(f"""
+                <div class="stat-card" style="background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);">
+                    <div style="font-size:1.3rem;font-weight:800;color:#f59e0b;">{peak_time}</div>
+                    <div style="font-size:0.85rem;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;">Peak Hour ({peak_votes} votes)</div>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            st.markdown('<br>', unsafe_allow_html=True)
+            
+            # Sub-task 4.4.2: Create line chart showing votes over time
+            # Prepare data for line chart
+            hours_display = [pd.to_datetime(h).strftime('%I:%M %p<br>%b %d') for h in hourly_counts['date_hour']]
+            votes_count = hourly_counts['votes'].tolist()
+            
+            # Highlight peak hours
+            colors = ['#f59e0b' if v == peak_votes else '#6366f1' for v in votes_count]
+            
+            fig_timeline = go.Figure()
+            
+            # Add line trace
+            fig_timeline.add_trace(go.Scatter(
+                x=hourly_counts['datetime'],
+                y=votes_count,
+                mode='lines+markers',
+                name='Votes',
+                line=dict(color='#6366f1', width=3),
+                marker=dict(
+                    size=10,
+                    color=colors,
+                    line=dict(color='rgba(255,255,255,0.3)', width=2)
+                ),
+                fill='tozeroy',
+                fillcolor='rgba(99,102,241,0.1)',
+                hovertemplate='<b>%{x|%I:%M %p, %b %d}</b><br>' +
+                              'Votes: %{y}<br>' +
+                              '<extra></extra>'
+            ))
+            
+            # Add average line
+            fig_timeline.add_hline(
+                y=avg_votes_per_hour,
+                line_dash="dash",
+                line_color="#22c55e",
+                annotation_text=f"Average: {avg_votes_per_hour:.1f} votes/hour",
+                annotation_position="right",
+                annotation_font_color="#22c55e"
+            )
+            
+            fig_timeline.update_layout(
+                title=dict(
+                    text='Voting Activity Over Time',
+                    font=dict(size=18, color='white', family='Inter')
+                ),
+                xaxis=dict(
+                    title='Time',
+                    gridcolor='rgba(255,255,255,0.1)',
+                    color='white',
+                    tickformat='%I:%M %p<br>%b %d'
+                ),
+                yaxis=dict(
+                    title='Number of Votes',
+                    gridcolor='rgba(255,255,255,0.1)',
+                    color='white'
+                ),
+                plot_bgcolor='rgba(0,0,0,0)',
+                paper_bgcolor='rgba(0,0,0,0)',
+                font=dict(color='white', family='Inter'),
+                height=450,
+                margin=dict(l=60, r=40, t=80, b=60),
+                hovermode='x unified',
+                showlegend=False
+            )
+            
+            st.plotly_chart(fig_timeline, use_container_width=True)
+            
+            # Show peak hours details
+            st.markdown("##### 🔥 Peak Voting Hours")
+            
+            # Get top 3 peak hours
+            top_hours = hourly_counts.nlargest(3, 'votes')
+            
+            peak_cols = st.columns(3)
+            
+            for i, (idx, row) in enumerate(top_hours.iterrows()):
+                medal = ['🥇', '🥈', '🥉'][i]
+                hour_time = pd.to_datetime(row['date_hour']).strftime('%I:%M %p')
+                hour_date = pd.to_datetime(row['date_hour']).strftime('%b %d, %Y')
+                
+                with peak_cols[i]:
+                    st.markdown(f"""
+                    <div class="stat-card" style="background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);">
+                        <div style="font-size:2rem;margin-bottom:8px;">{medal}</div>
+                        <div style="font-size:1.3rem;font-weight:700;color:#f59e0b;margin-bottom:4px;">{hour_time}</div>
+                        <div style="font-size:0.8rem;color:#94a3b8;margin-bottom:8px;">{hour_date}</div>
+                        <div style="font-size:1.5rem;font-weight:800;color:white;">{row['votes']} votes</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+            
+            # Show hourly breakdown table
+            with st.expander("📊 View Detailed Hourly Breakdown"):
+                df_display = hourly_counts.copy()
+                df_display['Time'] = df_display['datetime'].dt.strftime('%I:%M %p')
+                df_display['Date'] = df_display['datetime'].dt.strftime('%b %d, %Y')
+                df_display['Votes'] = df_display['votes']
+                df_display['% of Total'] = (df_display['votes'] / total_votes * 100).round(1)
+                
+                st.dataframe(
+                    df_display[['Date', 'Time', 'Votes', '% of Total']],
+                    use_container_width=True,
+                    hide_index=True
+                )
+        else:
+            st.markdown(
+                '<div class="info-box">📊 No voting data available yet. '
+                'The timeline will appear once students start voting.</div>',
+                unsafe_allow_html=True
+            )
+        
+        st.markdown('<br>', unsafe_allow_html=True)
+        
+        # Task 4.5: Committee Popularity Metrics
+        st.markdown("#### 📊 Committee Popularity Metrics")
+        
+        # Sub-task 4.5.1: Calculate total votes per committee
+        committee_votes = db.execute('''
+            SELECT 
+                committee_name,
+                COUNT(*) as total_votes
+            FROM votes
+            GROUP BY committee_name
+            ORDER BY total_votes DESC
+        ''').fetchall()
+        
+        if committee_votes and len(committee_votes) > 0:
+            # Convert to list of dicts
+            committee_stats = [
+                {
+                    'committee': row[0],
+                    'total_votes': row[1]
+                }
+                for row in committee_votes
+            ]
+            
+            # Get candidate counts per committee
+            candidate_counts = db.execute('''
+                SELECT 
+                    committee_name,
+                    COUNT(*) as candidate_count
+                FROM candidates
+                WHERE status = 'approved'
+                GROUP BY committee_name
+            ''').fetchall()
+            
+            candidate_map = {row[0]: row[1] for row in candidate_counts}
+            
+            # Get total voters (students who voted)
+            total_voters = stats['voted_students']
+            
+            # Enrich committee stats with candidate counts and ratios
+            for comm in committee_stats:
+                comm['candidates'] = candidate_map.get(comm['committee'], 0)
+                # Sub-task 4.5.3: Calculate candidate-to-voter ratio
+                if total_voters > 0:
+                    comm['candidate_voter_ratio'] = comm['candidates'] / total_voters
+                    comm['participation_rate'] = (comm['total_votes'] / total_voters) * 100
+                else:
+                    comm['candidate_voter_ratio'] = 0
+                    comm['participation_rate'] = 0
+            
+            # Sub-task 4.5.2: Identify most contested committees (highest candidate-to-vote ratio)
+            # A committee is "contested" when it has many candidates relative to votes received
+            for comm in committee_stats:
+                if comm['total_votes'] > 0:
+                    comm['contest_ratio'] = comm['candidates'] / comm['total_votes']
+                else:
+                    comm['contest_ratio'] = 0
+            
+            sorted_by_contest = sorted(committee_stats, key=lambda x: x['contest_ratio'], reverse=True)
+            most_contested = sorted_by_contest[:3]
+            
+            # Sub-task 4.5.4: Identify committees with low participation
+            sorted_by_participation = sorted(committee_stats, key=lambda x: x['participation_rate'])
+            low_participation = [c for c in sorted_by_participation if c['participation_rate'] < 50][:3]
+            
+            # Display metrics grid
+            metric_cols = st.columns(4)
+            
+            with metric_cols[0]:
+                total_committee_votes = sum(c['total_votes'] for c in committee_stats)
+                st.markdown(f"""
+                <div class="stat-card" style="background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.3);">
+                    <div style="font-size:2rem;font-weight:800;color:#818cf8;">{total_committee_votes}</div>
+                    <div style="font-size:0.85rem;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;">Total Committee Votes</div>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            with metric_cols[1]:
+                avg_votes_per_committee = total_committee_votes / len(committee_stats) if len(committee_stats) > 0 else 0
+                st.markdown(f"""
+                <div class="stat-card" style="background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.3);">
+                    <div style="font-size:2rem;font-weight:800;color:#22c55e;">{avg_votes_per_committee:.1f}</div>
+                    <div style="font-size:0.85rem;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;">Avg Votes/Committee</div>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            with metric_cols[2]:
+                most_popular = max(committee_stats, key=lambda x: x['total_votes'])
+                st.markdown(f"""
+                <div class="stat-card" style="background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);">
+                    <div style="font-size:1.2rem;font-weight:800;color:#f59e0b;">{most_popular['committee']}</div>
+                    <div style="font-size:0.85rem;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;">Most Popular ({most_popular['total_votes']} votes)</div>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            with metric_cols[3]:
+                active_committees = len(committee_stats)
+                st.markdown(f"""
+                <div class="stat-card" style="background:rgba(168,85,247,0.1);border:1px solid rgba(168,85,247,0.3);">
+                    <div style="font-size:2rem;font-weight:800;color:#a855f7;">{active_committees}</div>
+                    <div style="font-size:0.85rem;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;">Active Committees</div>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            st.markdown('<br>', unsafe_allow_html=True)
+            
+            # Chart: Total votes per committee
+            st.markdown("##### 📊 Votes Distribution by Committee")
+            
+            committees = [c['committee'] for c in committee_stats]
+            votes = [c['total_votes'] for c in committee_stats]
+            candidates = [c['candidates'] for c in committee_stats]
+            
+            fig_committee = go.Figure()
+            
+            # Add votes bar
+            fig_committee.add_trace(go.Bar(
+                x=committees,
+                y=votes,
+                name='Votes Received',
+                marker=dict(
+                    color='#6366f1',
+                    line=dict(color='rgba(255,255,255,0.2)', width=1)
+                ),
+                text=votes,
+                textposition='auto',
+                hovertemplate='<b>%{x}</b><br>' +
+                              'Votes: %{y}<br>' +
+                              '<extra></extra>'
+            ))
+            
+            # Add candidates line
+            fig_committee.add_trace(go.Scatter(
+                x=committees,
+                y=candidates,
+                name='Candidates',
+                mode='lines+markers',
+                line=dict(color='#f59e0b', width=3),
+                marker=dict(size=10, color='#f59e0b'),
+                yaxis='y2',
+                hovertemplate='<b>%{x}</b><br>' +
+                              'Candidates: %{y}<br>' +
+                              '<extra></extra>'
+            ))
+            
+            fig_committee.update_layout(
+                title=dict(
+                    text='Committee Votes vs Candidates',
+                    font=dict(size=16, color='white')
+                ),
+                xaxis=dict(
+                    title='Committee',
+                    gridcolor='rgba(255,255,255,0.1)',
+                    color='white'
+                ),
+                yaxis=dict(
+                    title='Votes Received',
+                    gridcolor='rgba(255,255,255,0.1)',
+                    color='white'
+                ),
+                yaxis2=dict(
+                    title='Number of Candidates',
+                    overlaying='y',
+                    side='right',
+                    color='#f59e0b',
+                    gridcolor='rgba(0,0,0,0)'
+                ),
+                plot_bgcolor='rgba(0,0,0,0)',
+                paper_bgcolor='rgba(0,0,0,0)',
+                font=dict(color='white'),
+                height=400,
+                margin=dict(l=60, r=60, t=60, b=100),
+                legend=dict(
+                    orientation='h',
+                    yanchor='bottom',
+                    y=1.02,
+                    xanchor='right',
+                    x=1
+                )
+            )
+            
+            st.plotly_chart(fig_committee, use_container_width=True)
+            
+            st.markdown('<br>', unsafe_allow_html=True)
+            
+            # Sub-task 4.5.2: Show most contested committees
+            st.markdown("##### 🔥 Most Contested Committees")
+            st.markdown(
+                '<div class="info-box">Committees with the highest competition (candidates per vote received)</div>',
+                unsafe_allow_html=True
+            )
+            
+            contest_cols = st.columns(3)
+            
+            for i, comm in enumerate(most_contested[:3]):
+                medal = ['🥇', '🥈', '🥉'][i]
+                
+                with contest_cols[i]:
+                    st.markdown(f"""
+                    <div class="stat-card" style="background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);">
+                        <div style="font-size:2rem;margin-bottom:8px;">{medal}</div>
+                        <div style="font-size:1.2rem;font-weight:700;color:#ef4444;margin-bottom:4px;">{comm['committee']}</div>
+                        <div style="font-size:0.9rem;color:#94a3b8;margin-bottom:8px;">{comm['candidates']} candidates, {comm['total_votes']} votes</div>
+                        <div style="font-size:1.3rem;font-weight:800;color:white;">Ratio: {comm['contest_ratio']:.2f}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+            
+            st.markdown('<br>', unsafe_allow_html=True)
+            
+            # Sub-task 4.5.3: Display candidate-to-voter ratio
+            st.markdown("##### 👥 Candidate-to-Voter Ratios")
+            
+            # Create a table view
+            ratio_data = []
+            for comm in committee_stats:
+                ratio_data.append({
+                    'Committee': comm['committee'],
+                    'Candidates': comm['candidates'],
+                    'Votes': comm['total_votes'],
+                    'Participation': f"{comm['participation_rate']:.1f}%",
+                    'Candidate/Voter Ratio': f"{comm['candidate_voter_ratio']:.4f}"
+                })
+            
+            df_ratios = pd.DataFrame(ratio_data)
+            st.dataframe(df_ratios, use_container_width=True, hide_index=True)
+            
+            st.markdown('<br>', unsafe_allow_html=True)
+            
+            # Sub-task 4.5.4: Identify committees with low participation
+            if low_participation:
+                st.markdown("##### 📉 Committees with Low Participation")
+                st.markdown(
+                    '<div class="warn-box">⚠️ These committees received votes from less than 50% of voters</div>',
+                    unsafe_allow_html=True
+                )
+                
+                low_cols = st.columns(min(3, len(low_participation)))
+                
+                for i, comm in enumerate(low_participation):
+                    with low_cols[i]:
+                        st.markdown(f"""
+                        <div class="stat-card" style="background:rgba(100,116,139,0.1);border:1px solid rgba(100,116,139,0.3);">
+                            <div style="font-size:1.2rem;font-weight:700;color:#64748b;margin-bottom:8px;">{comm['committee']}</div>
+                            <div style="font-size:1.5rem;font-weight:800;color:#94a3b8;margin-bottom:4px;">{comm['participation_rate']:.1f}%</div>
+                            <div style="font-size:0.85rem;color:#64748b;">{comm['total_votes']} votes from {total_voters} voters</div>
+                        </div>
+                        """, unsafe_allow_html=True)
+            else:
+                st.markdown(
+                    '<div class="success-box">✅ All committees have healthy participation rates (50%+)</div>',
+                    unsafe_allow_html=True
+                )
+        else:
+            st.markdown(
+                '<div class="info-box">📊 No committee voting data available yet. '
+                'Metrics will appear once students start voting.</div>',
+                unsafe_allow_html=True
+            )
 
     # ── TAB 8: RECORDS ────────────────────────────────────────────────────────
     with t8:
