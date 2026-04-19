@@ -3,54 +3,55 @@ Visual Verification for Task 4.5: Committee Popularity Metrics
 Shows what the implementation includes
 """
 
+
 def show_implementation_details():
-    print("="*70)
+    print("=" * 70)
     print("Task 4.5: Committee Popularity Metrics - Visual Verification")
-    print("="*70)
-    
+    print("=" * 70)
+
     print("\n📍 LOCATION IN APP")
     print("-" * 70)
     print("File: app.py")
     print("Tab: Analytics (7th tab in admin dashboard)")
     print("Section: Committee Popularity Metrics")
     print("Lines: ~1752-2020")
-    
+
     print("\n✅ SUB-TASKS IMPLEMENTED")
     print("-" * 70)
-    
+
     print("\n4.5.1: Calculate total votes per committee")
     print("  • SQL query groups votes by committee_name")
     print("  • Results sorted by total votes (descending)")
     print("  • Data structure: list of dicts with committee and vote count")
-    
+
     print("\n4.5.2: Show most contested committees")
     print("  • Calculates contest_ratio = candidates / votes")
     print("  • Identifies top 3 most contested committees")
     print("  • Displays with medals: 🥇 🥈 🥉")
     print("  • Shows: candidates count, votes, and ratio")
-    
+
     print("\n4.5.3: Display candidate-to-voter ratio")
     print("  • Calculates ratio = candidates / total_voters")
     print("  • Shows participation rate per committee")
     print("  • Displays in detailed table format")
     print("  • Columns: Committee, Candidates, Votes, Participation, Ratio")
-    
+
     print("\n4.5.4: Identify committees with low participation")
     print("  • Calculates participation_rate = (votes/voters) * 100")
     print("  • Flags committees with <50% participation")
     print("  • Displays warning cards for low-participation committees")
     print("  • Shows success message if all committees healthy")
-    
+
     print("\n📊 VISUALIZATIONS")
     print("-" * 70)
-    
+
     print("\n1. Metrics Grid (4 cards)")
     print("   ┌─────────────┬─────────────┬─────────────┬─────────────┐")
     print("   │   Total     │     Avg     │    Most     │   Active    │")
     print("   │ Committee   │   Votes/    │   Popular   │ Committees  │")
     print("   │   Votes     │  Committee  │  Committee  │             │")
     print("   └─────────────┴─────────────┴─────────────┴─────────────┘")
-    
+
     print("\n2. Dual-Axis Chart")
     print("   Committee Votes vs Candidates")
     print("   ┌─────────────────────────────────────────────────────┐")
@@ -61,7 +62,7 @@ def show_implementation_details():
     print("   │   ▓▓▓  │  ●────●────●────●                          │")
     print("   └─────────────────────────────────────────────────────┘")
     print("        Sports  Literary  Eco  Cultural")
-    
+
     print("\n3. Most Contested Committees (3 cards)")
     print("   ┌──────────┬──────────┬──────────┐")
     print("   │    🥇    │    🥈    │    🥉    │")
@@ -69,7 +70,7 @@ def show_implementation_details():
     print("   │ Ratio:   │ Ratio:   │ Ratio:   │")
     print("   │   2.50   │   1.75   │   1.25   │")
     print("   └──────────┴──────────┴──────────┘")
-    
+
     print("\n4. Candidate-to-Voter Ratios (Table)")
     print("   ┌───────────┬───────────┬───────┬──────────────┬─────────┐")
     print("   │ Committee │ Candidates│ Votes │ Participation│  Ratio  │")
@@ -78,7 +79,7 @@ def show_implementation_details():
     print("   │ Literary  │     3     │  18   │    60.0%     │ 0.1500  │")
     print("   │ Eco       │     4     │  15   │    50.0%     │ 0.2000  │")
     print("   └───────────┴───────────┴───────┴──────────────┴─────────┘")
-    
+
     print("\n5. Low Participation Warnings (if any)")
     print("   ┌──────────────────────────────────────┐")
     print("   │  ⚠️  Committees with Low Participation│")
@@ -86,7 +87,7 @@ def show_implementation_details():
     print("   │  Cultural: 35.0%                     │")
     print("   │  (7 votes from 20 voters)            │")
     print("   └──────────────────────────────────────┘")
-    
+
     print("\n🎨 STYLING")
     print("-" * 70)
     print("• Glassmorphic design (consistent with app theme)")
@@ -98,14 +99,14 @@ def show_implementation_details():
     print("  - Gray (#64748b): Low participation warnings")
     print("• Responsive column layouts")
     print("• Interactive hover tooltips on charts")
-    
+
     print("\n💾 DATA SOURCES")
     print("-" * 70)
     print("1. votes table → Total votes per committee")
     print("2. candidates table → Candidate counts (status='approved')")
     print("3. students table → Total voters (has_voted=1)")
     print("4. Derived calculations → Ratios and percentages")
-    
+
     print("\n🔍 EMPTY STATE HANDLING")
     print("-" * 70)
     print("When no voting data exists:")
@@ -113,7 +114,7 @@ def show_implementation_details():
     print("│ 📊 No committee voting data available yet.             │")
     print("│ Metrics will appear once students start voting.        │")
     print("└────────────────────────────────────────────────────────┘")
-    
+
     print("\n📝 CODE STRUCTURE")
     print("-" * 70)
     print("1. Query votes grouped by committee")
@@ -130,7 +131,7 @@ def show_implementation_details():
     print("   • Most contested cards (3)")
     print("   • Ratio table")
     print("   • Low participation warnings (if any)")
-    
+
     print("\n🧪 TESTING")
     print("-" * 70)
     print("✓ Syntax validation: PASSED (no errors)")
@@ -138,7 +139,7 @@ def show_implementation_details():
     print("✓ SQL queries: VALIDATED")
     print("✓ UI components: PRESENT")
     print("✓ Empty state: HANDLED")
-    
+
     print("\n🚀 HOW TO VIEW")
     print("-" * 70)
     print("1. Run: streamlit run app.py")
@@ -146,18 +147,18 @@ def show_implementation_details():
     print("3. Click on 'Analytics' tab (📈)")
     print("4. Scroll down to 'Committee Popularity Metrics' section")
     print("5. View all metrics, charts, and tables")
-    
-    print("\n" + "="*70)
+
+    print("\n" + "=" * 70)
     print("✅ TASK 4.5 IMPLEMENTATION COMPLETE")
-    print("="*70)
+    print("=" * 70)
     print("\nAll 4 sub-tasks implemented:")
     print("  ✓ 4.5.1: Calculate total votes per committee")
     print("  ✓ 4.5.2: Show most contested committees")
     print("  ✓ 4.5.3: Display candidate-to-voter ratio")
     print("  ✓ 4.5.4: Identify committees with low participation")
     print("\nReady for production use! 🎉")
-    print("="*70)
+    print("=" * 70)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     show_implementation_details()
