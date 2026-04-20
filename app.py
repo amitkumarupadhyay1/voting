@@ -11,7 +11,16 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from auth import Auth
-from models import AuditLog, Candidate, Committee, Database, Election, Student, Vote
+from models import (
+    AuditLog,
+    Candidate,
+    Committee,
+    Config,
+    Database,
+    Election,
+    Student,
+    Vote,
+)
 from utils import Utils
 from voting import VotingEngine
 from pages.components import phase_badge
@@ -323,10 +332,11 @@ def init():
     voting = VotingEngine(db)
     elec = Election(db)
     alog = AuditLog(db)
-    return db, auth, voting, elec, alog
+    conf = Config(db)
+    return db, auth, voting, elec, alog, conf
 
 
-db, auth, voting, election, audit = init()
+db, auth, voting, election, audit, config = init()
 
 # ─────────────────────────────────────────────────────────────────────────────
 # SESSION STATE
@@ -616,7 +626,7 @@ elif st.session_state.user_type == "admin":
             unsafe_allow_html=True,
         )
 
-    t1, t2, t3, t4, t5, t6, t7, t8, t9 = st.tabs(
+    t1, t2, t3, t4, t5, t6, t7, t8, t9, t10 = st.tabs(
         [
             "📥 Import",
             "👥 Students",
@@ -627,6 +637,7 @@ elif st.session_state.user_type == "admin":
             "📈 Analytics",
             "🔍 Records",
             "🔐 Admin",
+            "⚙️ Configuration",
         ]
     )
 
@@ -644,7 +655,18 @@ elif st.session_state.user_type == "admin":
         if f:
             try:
                 df = pd.read_excel(f, dtype=str)
-                imp, errs, elist = Utils.import_students_from_excel(df, db)
+                pbar = st.progress(0)
+                stxt = st.empty()
+
+                def up_prog(curr, tot):
+                    pbar.progress(curr / tot)
+                    stxt.markdown(f'<div style="color:#94a3b8;font-size:0.85rem;margin-bottom:8px;">📥 Importing: <strong>{curr}</strong> of {tot} students...</div>', unsafe_allow_html=True)
+
+                imp, errs, elist = Utils.import_students_from_excel(
+                    df, db, progress_callback=up_prog
+                )
+                pbar.empty()
+                stxt.empty()
                 if imp > 0:
                     st.markdown(
                         f'<div class="success-box">✅ {imp} students imported successfully.</div>',
@@ -698,7 +720,7 @@ elif st.session_state.user_type == "admin":
                 st.text_input("🔍 Search", placeholder="Name or Adm No").strip().lower()
             )
         with c2:
-            fcls = st.selectbox("Class", ["All", "7", "8", "9", "10", "11", "12"])
+            fcls = st.selectbox("Class", ["All"] + Config.get_classes())
         with c3:
             fhs = st.selectbox("House", ["All"] + voting.HOUSES)
 
@@ -760,9 +782,9 @@ elif st.session_state.user_type == "admin":
             with c1:
                 na = st.text_input("Admission No", key="na").strip().lower()
                 nn = st.text_input("Full Name", key="nn")
-                nc = st.selectbox("Class", ["7", "8", "9", "10", "11", "12"], key="nc")
+                nc = st.selectbox("Class", Config.get_classes(), key="nc")
             with c2:
-                ns = st.selectbox("Section", ["A", "B", "C", "D", "E"], key="ns")
+                ns = st.selectbox("Section", Config.get_sections(), key="ns")
                 nh = st.selectbox("House", voting.HOUSES, key="nh")
             if st.button("✅ Add Student", type="primary", use_container_width=True):
                 if not na or not nn:
@@ -801,22 +823,24 @@ elif st.session_state.user_type == "admin":
                     c1, c2 = st.columns(2)
                     with c1:
                         en = st.text_input("Name", value=s[1])
+                        classes_list = Config.get_classes()
                         ec = st.selectbox(
                             "Class",
-                            ["7", "8", "9", "10", "11", "12"],
+                            classes_list,
                             index=(
-                                ["7", "8", "9", "10", "11", "12"].index(s[2])
-                                if s[2] in ["7", "8", "9", "10", "11", "12"]
+                                classes_list.index(s[2])
+                                if s[2] in classes_list
                                 else 0
                             ),
                         )
                     with c2:
+                        sections_list = Config.get_sections()
                         es = st.selectbox(
                             "Section",
-                            ["A", "B", "C", "D", "E"],
+                            sections_list,
                             index=(
-                                ["A", "B", "C", "D", "E"].index(s[3])
-                                if s[3] in ["A", "B", "C", "D", "E"]
+                                sections_list.index(s[3])
+                                if s[3] in sections_list
                                 else 0
                             ),
                         )
@@ -1085,7 +1109,7 @@ elif st.session_state.user_type == "admin":
                     if nom_type == "School":
                         nom_comm = st.selectbox("Committee", sc_l) if sc_l else None
                         nom_cls = st.selectbox(
-                            "Class", ["7", "8", "9", "10", "11", "12"]
+                            "Class", Config.get_classes()
                         )
                         nom_hs = nom_grp = None
                     else:
@@ -1205,7 +1229,21 @@ elif st.session_state.user_type == "admin":
                         if st.button(
                             "✅ Import All", type="primary", key="bulk_import_btn"
                         ):
-                            imported, import_errors = Candidate(db).bulk_add(rows)
+                            pbar = st.progress(0)
+                            stxt = st.empty()
+
+                            def up_prog(curr, tot):
+                                pbar.progress(curr / tot)
+                                stxt.markdown(
+                                    f'<div style="color:#94a3b8;font-size:0.85rem;margin-bottom:8px;">🎯 Importing Nomination: <strong>{curr}</strong> of {tot}...</div>',
+                                    unsafe_allow_html=True,
+                                )
+
+                            imported, import_errors = Candidate(db).bulk_add(
+                                rows, progress_callback=up_prog
+                            )
+                            pbar.empty()
+                            stxt.empty()
 
                             if imported > 0:
                                 st.markdown(
@@ -2845,6 +2883,94 @@ elif st.session_state.user_type == "admin":
             "in the database, which will restore the default password <code>JB2026Secure</code>.</div>",
             unsafe_allow_html=True,
         )
+
+    # ── TAB 10: CONFIGURATION ─────────────────────────────────────────────────
+    with t10:
+        st.markdown("#### ⚙️ Application Configuration", unsafe_allow_html=True)
+        st.markdown(
+            '<div class="info-box">🛠️ Manage Houses, Classes, and Sections available in the system. '
+            "Changes here affect imports and dropdowns.</div>",
+            unsafe_allow_html=True,
+        )
+
+        c1, c2, c3 = st.columns(3)
+
+        # --- HOUSES ---
+        with c1:
+            st.markdown("##### 🏠 Houses", unsafe_allow_html=True)
+            current_houses = voting.HOUSES
+            for h in current_houses:
+                hc1, hc2 = st.columns([4, 1])
+                hc1.text(h)
+                if hc2.button("🗑️", key=f"del_h_{h}"):
+                    # Check if any student belongs to this house
+                    if db.execute("SELECT COUNT(*) FROM students WHERE house=?", (h,)).fetchone()[0] > 0:
+                        st.error(f"Cannot delete '{h}' — students belong to it.")
+                    else:
+                        new_h = [x for x in current_houses if x != h]
+                        Config.set_houses(new_h)
+                        audit.log("CONFIG_DELETE_HOUSE", "admin", h)
+                        st.rerun()
+
+            new_house = st.text_input("New House", key="new_house_input").strip()
+            if st.button("➕ Add House"):
+                if new_house and new_house not in current_houses:
+                    Config.set_houses(current_houses + [new_house])
+                    audit.log("CONFIG_ADD_HOUSE", "admin", new_house)
+                    st.rerun()
+
+        # --- CLASSES ---
+        with c2:
+            st.markdown("##### 📚 Classes", unsafe_allow_html=True)
+            current_classes = Config.get_classes()
+            for c in current_classes:
+                cc1, cc2 = st.columns([4, 1])
+                cc1.text(c)
+                if cc2.button("🗑️", key=f"del_c_{c}"):
+                    if db.execute("SELECT COUNT(*) FROM students WHERE class=?", (c,)).fetchone()[0] > 0:
+                        st.error(f"Cannot delete Class '{c}' — students belong to it.")
+                    else:
+                        new_c = [x for x in current_classes if x != c]
+                        Config.set_classes(new_c)
+                        audit.log("CONFIG_DELETE_CLASS", "admin", c)
+                        st.rerun()
+
+            new_class = st.text_input("New Class", key="new_class_input").strip()
+            if st.button("➕ Add Class"):
+                if new_class and new_class not in current_classes:
+                    # Sort classes numerically if possible
+                    updated = current_classes + [new_class]
+                    try:
+                        updated.sort(key=lambda x: int(x))
+                    except:
+                        updated.sort()
+                    Config.set_classes(updated)
+                    audit.log("CONFIG_ADD_CLASS", "admin", new_class)
+                    st.rerun()
+
+        # --- SECTIONS ---
+        with c3:
+            st.markdown("##### 📍 Sections", unsafe_allow_html=True)
+            current_sections = Config.get_sections()
+            for s in current_sections:
+                sc1, sc2 = st.columns([4, 1])
+                sc1.text(s)
+                if sc2.button("🗑️", key=f"del_s_{s}"):
+                    if db.execute("SELECT COUNT(*) FROM students WHERE section=?", (s,)).fetchone()[0] > 0:
+                        st.error(f"Cannot delete Section '{s}' — students belong to it.")
+                    else:
+                        new_s = [x for x in current_sections if x != s]
+                        Config.set_sections(new_s)
+                        audit.log("CONFIG_DELETE_SECTION", "admin", s)
+                        st.rerun()
+
+            new_section = st.text_input("New Section", key="new_section_input").strip()
+            if st.button("➕ Add Section"):
+                if new_section and new_section not in current_sections:
+                    updated = sorted(current_sections + [new_section])
+                    Config.set_sections(updated)
+                    audit.log("CONFIG_ADD_SECTION", "admin", new_section)
+                    st.rerun()
 
     st.markdown(
         f'<div class="civic-fact" style="margin-top:32px;">💡 {fact}</div>',

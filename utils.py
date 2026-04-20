@@ -213,10 +213,14 @@ class Utils:
     # ── student import ─────────────────────────────────────────────────────────
 
     @staticmethod
-    def validate_student_data(row: dict) -> Tuple[bool, str, dict]:
-        valid_houses = {"Taxila", "Janata", "Saachi", "Nalanda"}
-        valid_classes = {"7", "8", "9", "10", "11", "12"}
-        valid_sections = {"A", "B", "C", "D", "E"}
+    def validate_student_data(row: dict, db: Database) -> Tuple[bool, str, dict]:
+        from models import Config
+
+        conf = Config(db)
+        valid_houses = set(conf.get_houses())
+        valid_classes = set(conf.get_classes())
+        valid_sections = set(conf.get_sections())
+
         try:
             admission_no = (
                 str(row.get("admission_no", "")).strip().lower().split(".")[0]
@@ -231,13 +235,21 @@ class Utils:
             if not name or len(name) < 2:
                 return False, "Invalid student name", {}
             if cls not in valid_classes:
-                return False, f"Invalid class '{cls}' (must be 7–12)", {}
+                return (
+                    False,
+                    f"Invalid class '{cls}' (Valid: {', '.join(sorted(valid_classes))})",
+                    {},
+                )
             if section not in valid_sections:
-                return False, f"Invalid section '{section}' (A–E)", {}
+                return (
+                    False,
+                    f"Invalid section '{section}' (Valid: {', '.join(sorted(valid_sections))})",
+                    {},
+                )
             if house not in valid_houses:
                 return (
                     False,
-                    f"Invalid house '{house}' (Taxila/Janata/Saachi/Nalanda)",
+                    f"Invalid house '{house}' (Valid: {', '.join(sorted(valid_houses))})",
                     {},
                 )
 
@@ -257,7 +269,7 @@ class Utils:
 
     @staticmethod
     def import_students_from_excel(
-        df: pd.DataFrame, db: Database
+        df: pd.DataFrame, db: Database, progress_callback=None
     ) -> Tuple[int, int, List[str]]:
         from auth import Auth
 
@@ -270,8 +282,11 @@ class Utils:
         if missing:
             return 0, len(df), [f"Missing columns: {', '.join(sorted(missing))}"]
 
+        total = len(df)
         for idx, row in df.iterrows():
-            valid, err, data = Utils.validate_student_data(row.to_dict())
+            if progress_callback:
+                progress_callback(idx + 1, total)
+            valid, err, data = Utils.validate_student_data(row.to_dict(), db)
             if not valid:
                 errors.append(f"Row {idx+2}: {err}")
                 continue

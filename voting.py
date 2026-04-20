@@ -9,7 +9,11 @@ from models import Committee, Database, Election, Student, Vote, VoteToken
 
 
 class VotingEngine:
-    HOUSES = ["Taxila", "Janata", "Saachi", "Nalanda"]
+    @property
+    def HOUSES(self) -> List[str]:
+        from models import Config
+
+        return Config(self.db).get_houses()
 
     def __init__(self, db: Database):
         self.db = db

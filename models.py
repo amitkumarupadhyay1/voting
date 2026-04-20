@@ -3,6 +3,7 @@ JB Academy Election Portal - Database Models
 Thread-safe, WAL-mode SQLite with full election integrity.
 """
 
+import json
 import secrets
 import sqlite3
 import threading
@@ -688,7 +689,7 @@ class Candidate:
         ok = self.db.write_many([("DELETE FROM candidates WHERE id=?", (row[0],))])
         return (True, "Nomination withdrawn") if ok else (False, "Database error")
 
-    def bulk_add(self, rows: List[Dict]) -> Tuple[int, List[str]]:
+    def bulk_add(self, rows: List[Dict], progress_callback=None) -> Tuple[int, List[str]]:
         """
         Bulk-nominate from a list of dicts.
         Each dict: {admission_no, committee_type, committee_name,
@@ -697,7 +698,10 @@ class Candidate:
         """
         imported, errors = 0, []
         now = datetime.now().isoformat()
+        total = len(rows)
         for i, r in enumerate(rows, 1):
+            if progress_callback:
+                progress_callback(i, total)
             adm = str(r.get("admission_no", "")).strip().lower()
             ctype = str(r.get("committee_type", "")).strip()
             cname = str(r.get("committee_name", "")).strip()
@@ -1073,3 +1077,85 @@ class AuditLog:
                 (user_adm,),
             ).fetchall()
         ]
+
+
+class Config:
+    """Manager for configurable lists like Houses, Classes, and Sections."""
+
+    DEFAULTS = {
+        "houses": ["Ajanta", "Sanchi", "Taxila", "Nalanda"],
+        "classes": ["6", "7", "8", "9", "10", "11", "12"],
+        "sections": ["A", "B", "C", "D", "E"],
+    }
+
+    def __init__(self, db: Database):
+        self.db = db
+
+    def _get(self, key: str, default: Any) -> Any:
+        cache_key = f"config_{key}"
+        cached = _cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        row = self.db.execute(
+            "SELECT value FROM settings WHERE key=?",
+            (f"conf_{key}",),
+        ).fetchone()
+        if row:
+            try:
+                val = json.loads(row[0])
+                _cache.set(cache_key, val)
+                return val
+            except Exception:
+                pass
+
+        # Save default if not exists
+        self._set(key, default)
+        return default
+
+    def _set(self, key: str, value: Any):
+        self.db.write_many(
+            [
+                (
+                    "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, ?)",
+                    (f"conf_{key}", json.dumps(value), datetime.now().isoformat()),
+                )
+            ]
+        )
+        _cache.invalidate(f"config_{key}")
+
+    def get_houses(self) -> List[str]:
+        return self._get("houses", self.DEFAULTS["houses"])
+
+    def set_houses(self, houses: List[str]):
+        self._set(
+            "houses",
+            sorted(list(set(str(h).strip().title() for h in houses if str(h).strip()))),
+        )
+
+    def get_classes(self) -> List[str]:
+        return self._get("classes", self.DEFAULTS["classes"])
+
+    def set_classes(self, classes: List[str]):
+        # Store classes as strings, sorted numerically
+        def _sort_key(c):
+            try:
+                return int(c)
+            except Exception:
+                return 999
+
+        data = sorted(
+            list(set(str(c).strip() for c in classes if str(c).strip())), key=_sort_key
+        )
+        self._set("classes", data)
+
+    def get_sections(self) -> List[str]:
+        return self._get("sections", self.DEFAULTS["sections"])
+
+    def set_sections(self, sections: List[str]):
+        self._set(
+            "sections",
+            sorted(
+                list(set(str(s).strip().upper() for s in sections if str(s).strip()))
+            ),
+        )

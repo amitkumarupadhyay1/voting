@@ -111,7 +111,13 @@ PHASE_LABELS = {
 
 
 def hm(house: str) -> dict:
-    return HOUSE_META.get(house, _DEFAULT_HOUSE)
+    if not house:
+        return _DEFAULT_HOUSE
+    h = str(house).strip().title()
+    # Direct mappings for common variations
+    mapping = {"Ajanta": "Janata", "Sanchi": "Saachi"}
+    normalized = mapping.get(h, h)
+    return HOUSE_META.get(normalized, _DEFAULT_HOUSE)
 
 
 def ci(committee: str) -> dict:
