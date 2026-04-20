@@ -689,7 +689,9 @@ class Candidate:
         ok = self.db.write_many([("DELETE FROM candidates WHERE id=?", (row[0],))])
         return (True, "Nomination withdrawn") if ok else (False, "Database error")
 
-    def bulk_add(self, rows: List[Dict], progress_callback=None) -> Tuple[int, List[str]]:
+    def bulk_add(
+        self, rows: List[Dict], progress_callback=None
+    ) -> Tuple[int, List[str]]:
         """
         Bulk-nominate from a list of dicts.
         Each dict: {admission_no, committee_type, committee_name,
