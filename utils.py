@@ -10,6 +10,10 @@ from io import BytesIO
 from typing import Dict, List, Tuple
 
 import pandas as pd
+from openpyxl.styles import (
+    Font, PatternFill, Alignment, Border, Side, numbers
+)
+from openpyxl.utils import get_column_letter
 
 from models import Database, Student
 
@@ -55,10 +59,7 @@ class Utils:
         with pd.ExcelWriter(output, engine="openpyxl") as writer:
             df.to_excel(writer, index=False, sheet_name="Student Passwords")
             ws = writer.sheets["Student Passwords"]
-            for col in ws.columns:
-                ws.column_dimensions[col[0].column_letter].width = max(
-                    len(str(col[0].value or "")), 14
-                )
+            _style_header_and_data(ws, df, header_color="2E5C8A")
         return output.getvalue()
 
     # ── results download ───────────────────────────────────────────────────────
@@ -101,7 +102,7 @@ class Utils:
             if summary_rows:
                 df_sum = pd.DataFrame(summary_rows)
                 df_sum.to_excel(writer, index=False, sheet_name="Summary")
-                _autofit(writer.sheets["Summary"], df_sum)
+                _style_header_and_data(writer.sheets["Summary"], df_sum, header_color="1F4E78")
 
             # Per-committee sheets
             for ctype in ["School", "House"]:
@@ -133,7 +134,7 @@ class Utils:
                     sname = f"{ctype[:1]}-{cname}"[:31]
                     df_c = pd.DataFrame(rows)
                     df_c.to_excel(writer, index=False, sheet_name=sname)
-                    _autofit(writer.sheets[sname], df_c)
+                    _style_header_and_data(writer.sheets[sname], df_c, header_color="4F81BD")
 
             # Participation
             part_rows = [
@@ -146,8 +147,62 @@ class Utils:
             ]
             df_p = pd.DataFrame(part_rows)
             df_p.to_excel(writer, index=False, sheet_name="Participation")
-            _autofit(writer.sheets["Participation"], df_p)
+            _style_header_and_data(writer.sheets["Participation"], df_p, header_color="70AD47")
 
+        return output.getvalue()
+
+    @staticmethod
+    def create_school_results_class_wise(school_results: Dict) -> bytes:
+        """
+        School committee results organized by class: one sheet per class
+        showing all school committees.
+        Columns: Admission No, Candidate Name, Section, Committee Name, Class, Votes, Vote %
+        """
+        output = BytesIO()
+        
+        # Extract unique classes from all school committee candidates
+        classes_set = set()
+        for cname, data in school_results.items():
+            for c in data.get("candidates", []):
+                classes_set.add(c.get("class"))
+        
+        # Sort classes in descending order: X, IX, VIII, VII, VI, V, ...
+        roman_to_int = {
+            "X": 10, "IX": 9, "VIII": 8, "VII": 7, "VI": 6,
+            "V": 5, "IV": 4, "III": 3, "II": 2, "I": 1
+        }
+        
+        sorted_classes = sorted(
+            classes_set,
+            key=lambda c: roman_to_int.get(c, 0),
+            reverse=True
+        )
+        
+        with pd.ExcelWriter(output, engine="openpyxl") as writer:
+            for class_name in sorted_classes:
+                rows = []
+                
+                # Iterate through all committees and collect candidates from this class
+                for cname, data in sorted(school_results.items()):
+                    for c in data.get("candidates", []):
+                        if c.get("class") == class_name:
+                            rows.append({
+                                "Admission No": c["adm"],
+                                "Candidate Name": c["name"],
+                                "Section": c.get("section", "?"),
+                                "Committee Name": cname,
+                                "Class": c["class"],
+                                "Votes": c["votes"],
+                                "Vote %": f"{c['pct']}%",
+                            })
+                
+                # Create sheet if there are candidates from this class
+                if rows:
+                    sheet_name = f"Class {class_name}"
+                    df = pd.DataFrame(rows)
+                    df.to_excel(writer, index=False, sheet_name=sheet_name)
+                    _style_header_and_data(writer.sheets[sheet_name], df, header_color="C65911")
+        
         return output.getvalue()
 
     @staticmethod
@@ -202,12 +257,12 @@ class Utils:
                 if rows:
                     df = pd.DataFrame(rows)
                     df.to_excel(writer, index=False, sheet_name=house[:31])
-                    _autofit(writer.sheets[house[:31]], df)
+                    _style_header_and_data(writer.sheets[house[:31]], df, header_color="2E5C8A")
                 else:
                     # Empty sheet placeholder
-                    pd.DataFrame(
-                        [{"Note": f"No house committee results for {house}"}]
-                    ).to_excel(writer, index=False, sheet_name=house[:31])
+                    df = pd.DataFrame([{"Note": f"No house committee results for {house}"}])
+                    df.to_excel(writer, index=False, sheet_name=house[:31])
+                    _style_header_and_data(writer.sheets[house[:31]], df, header_color="2E5C8A")
         return output.getvalue()
 
     # ── student import ─────────────────────────────────────────────────────────
@@ -332,7 +387,7 @@ class Utils:
         output = BytesIO()
         with pd.ExcelWriter(output, engine="openpyxl") as writer:
             df.to_excel(writer, index=False, sheet_name="Pending Voters")
-            _autofit(writer.sheets["Pending Voters"], df)
+            _style_header_and_data(writer.sheets["Pending Voters"], df, header_color="C55A11")
         return output.getvalue()
 
     @staticmethod
@@ -411,9 +466,97 @@ class Utils:
 
 
 def _autofit(ws, df: pd.DataFrame):
-    """Auto-fit column widths in an openpyxl worksheet."""
-    for col in ws.columns:
+    """Auto-fit column widths and apply professional styling to worksheet."""
+    # Define border style
+    thin_border = Border(
+        left=Side(style='thin', color='CCCCCC'),
+        right=Side(style='thin', color='CCCCCC'),
+        top=Side(style='thin', color='CCCCCC'),
+        bottom=Side(style='thin', color='CCCCCC')
+    )
+    
+    # Style header row
+    header_fill = PatternFill(start_color="4F81BD", end_color="4F81BD", fill_type="solid")
+    header_font = Font(bold=True, color="FFFFFF", size=11)
+    header_alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    
+    # Apply header styling to first row
+    for col_num, col in enumerate(ws.columns, 1):
+        col_letter = get_column_letter(col_num)
+        header_cell = ws[f'{col_letter}1']
+        header_cell.fill = header_fill
+        header_cell.font = header_font
+        header_cell.alignment = header_alignment
+        header_cell.border = thin_border
+    
+    # Calculate and set column widths, apply borders and alignment to data rows
+    for col_num, col in enumerate(ws.columns, 1):
+        col_letter = get_column_letter(col_num)
         max_len = max(
             (len(str(cell.value)) for cell in col if cell.value is not None), default=10
         )
-        ws.column_dimensions[col[0].column_letter].width = min(max_len + 4, 50)
+        ws.column_dimensions[col_letter].width = min(max_len + 4, 50)
+        
+        # Apply styling to data rows
+        for row_num, cell in enumerate(col, 1):
+            if row_num > 1:  # Skip header
+                cell.border = thin_border
+                cell.alignment = Alignment(horizontal="left", vertical="center")
+                
+                # Center align numeric columns (Votes, Class, etc.)
+                if col_letter in ['A', 'E', 'F', 'G'] or "Votes" in str(ws[f'{col_letter}1'].value) or "Class" in str(ws[f'{col_letter}1'].value):
+                    cell.alignment = Alignment(horizontal="center", vertical="center")
+                
+                # Alternate row colors for better readability
+                if row_num % 2 == 0:
+                    cell.fill = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
+    
+    # Freeze header row
+    ws.freeze_panes = "A2"
+
+
+def _style_header_and_data(ws, df: pd.DataFrame, header_color: str = "4F81BD"):
+    """Apply professional styling: headers, borders, alternating rows, auto-fit."""
+    thin_border = Border(
+        left=Side(style='thin', color='D0CECE'),
+        right=Side(style='thin', color='D0CECE'),
+        top=Side(style='thin', color='D0CECE'),
+        bottom=Side(style='thin', color='D0CECE')
+    )
+    
+    header_fill = PatternFill(start_color=header_color, end_color=header_color, fill_type="solid")
+    header_font = Font(bold=True, color="FFFFFF", size=11)
+    header_alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    
+    # Style header row
+    for col_num, col in enumerate(ws.columns, 1):
+        col_letter = get_column_letter(col_num)
+        header_cell = ws[f'{col_letter}1']
+        header_cell.fill = header_fill
+        header_cell.font = header_font
+        header_cell.alignment = header_alignment
+        header_cell.border = thin_border
+        ws.column_dimensions[col_letter].width = min(
+            max((len(str(c.value)) for c in col if c.value is not None), default=10) + 3, 50
+        )
+    
+    # Apply styling to data rows
+    for row_num in range(2, ws.max_row + 1):
+        for col_num, col in enumerate(ws.columns, 1):
+            col_letter = get_column_letter(col_num)
+            cell = ws[f'{col_letter}{row_num}']
+            cell.border = thin_border
+            
+            # Alternate row colors
+            if row_num % 2 == 0:
+                cell.fill = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
+            
+            # Center alignment for numbers and specific columns
+            header_val = str(ws[f'{col_letter}1'].value or '')
+            if any(x in header_val for x in ['Votes', 'Class', '%', 'No', 'Rank']):
+                cell.alignment = Alignment(horizontal="center", vertical="center")
+            else:
+                cell.alignment = Alignment(horizontal="left", vertical="center")
+    
+    # Freeze header row
+    ws.freeze_panes = "A2"

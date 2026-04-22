@@ -1594,12 +1594,12 @@ elif st.session_state.user_type == "admin":
             stats_data = election.get_statistics()
 
             with rc2:
-                if results_data:
-                    res_file = Utils.create_results_file(results_data, stats_data)
+                if results_data and "School" in results_data:
+                    school_file = Utils.create_school_results_class_wise(results_data["School"])
                     st.download_button(
-                        "📥 Download Full Results (Excel)",
-                        data=res_file,
-                        file_name=f'results_{pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")}.xlsx',
+                        "🎓 Download School Results (Class-Wise)",
+                        data=school_file,
+                        file_name=f'school_results_classwise_{pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")}.xlsx',
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                         width='stretch',
                         type="primary",

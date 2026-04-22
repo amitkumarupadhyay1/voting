@@ -591,9 +591,8 @@ class Vote:
 
     def get_results_all(self) -> List[Tuple]:
         """
-        Single query: all committee results with candidate names, class, house.
-        Optimized with direct JOIN (no LOWER/TRIM) for 95% performance improvement.
-        Relies on normalized admission_no data (lowercase, trimmed at insert time).
+        Single query: all committee results with candidate names, class, house, section.
+        Uses LOWER/TRIM to handle case-insensitive admission_no matching.
         """
         return [tuple(r) for r in self.db.execute("""
             SELECT
@@ -604,11 +603,12 @@ class Vote:
                 c.admission_no,
                 s.name,
                 s.class,
+                s.section,
                 s.house,
                 COUNT(v.id) AS vote_count
             FROM candidates c
-            LEFT JOIN students s ON c.admission_no = s.admission_no
-            LEFT JOIN votes v ON v.candidate_adm = c.admission_no
+            LEFT JOIN students s ON LOWER(TRIM(c.admission_no)) = LOWER(TRIM(s.admission_no))
+            LEFT JOIN votes v ON LOWER(TRIM(v.candidate_adm)) = LOWER(TRIM(c.admission_no))
                 AND v.committee_name = c.committee_name
             WHERE c.status = "approved"
             GROUP BY c.committee_name, c.admission_no

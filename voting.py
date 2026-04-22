@@ -162,7 +162,7 @@ class VotingEngine:
             committee_name: {
               'total_votes': int,
               'max_winners': int,
-              'candidates':  [{adm, name, class, house, votes, pct, is_winner, is_tied}]
+              'candidates':  [{adm, name, class, section, house, votes, pct, is_winner, is_tied}]
             }
           }
         }
@@ -172,7 +172,7 @@ class VotingEngine:
         results: Dict = {}
 
         for row in rows:
-            ctype, cname, _, _, adm, name, cls, house, vc = row
+            ctype, cname, _, _, adm, name, cls, section, house, vc = row
             results.setdefault(ctype, {})
             results[ctype].setdefault(
                 cname,
@@ -187,6 +187,7 @@ class VotingEngine:
                     "adm": adm,
                     "name": name or adm,
                     "class": cls or "?",
+                    "section": section or "?",
                     "house": house or "?",
                     "votes": int(vc),
                 }
