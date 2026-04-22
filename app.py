@@ -507,7 +507,7 @@ if st.session_state.user_type is not None:
         with col2:
             if st.button(
                 "🔄 Extend Session",
-                use_container_width=True,
+                width='stretch',
                 type="primary",
                 key="extend_session",
             ):
@@ -568,7 +568,7 @@ if st.session_state.user_type is None:
             "Password", type="password", placeholder="Your password", key="lpwd"
         )
 
-        if st.button("🔓  Sign In", use_container_width=True, type="primary"):
+        if st.button("🔓  Sign In", width='stretch', type="primary"):
             if not lid or not lpwd:
                 st.markdown(
                     '<div class="error-box">❌ Please enter both ID and password.</div>',
@@ -626,7 +626,7 @@ elif st.session_state.user_type == "admin":
             unsafe_allow_html=True,
         )
     with ah2:
-        if st.button("🚪 Logout", type="secondary", use_container_width=True):
+        if st.button("🚪 Logout", type="secondary", width='stretch'):
             audit.log("ADMIN_LOGOUT", "admin")
             for k, v in _defaults.items():
                 st.session_state[k] = v
@@ -721,7 +721,7 @@ elif st.session_state.user_type == "admin":
                         file_name=f'passwords_{pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")}.xlsx',
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                         type="primary",
-                        use_container_width=True,
+                        width='stretch',
                     )
                 else:
                     st.markdown(
@@ -738,7 +738,7 @@ elif st.session_state.user_type == "admin":
     # ── TAB 2: STUDENTS ───────────────────────────────────────────────────────
     with t2:
         if st.button(
-            "📥 Download All Passwords", use_container_width=True, type="primary"
+            "📥 Download All Passwords", width='stretch', type="primary"
         ):
             pwd_file = Utils.create_password_file(Student(db).get_all())
             st.download_button(
@@ -746,7 +746,7 @@ elif st.session_state.user_type == "admin":
                 data=pwd_file,
                 file_name=f'passwords_{pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")}.xlsx',
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True,
+                width='stretch',
                 type="primary",
             )
         st.divider()
@@ -794,23 +794,23 @@ elif st.session_state.user_type == "admin":
         m3.metric("Not Voted", len(df_s) - vc)
         st.dataframe(
             df_s[["Adm", "Name", "Class", "Sec", "House", "Pwd", "Voted"]],
-            use_container_width=True,
+            width='stretch',
             hide_index=True,
         )
         st.divider()
 
         op1, op2, op3, op4 = st.columns(4)
         with op1:
-            if st.button("➕ Add", use_container_width=True):
+            if st.button("➕ Add", width='stretch'):
                 st.session_state.show_add = not st.session_state.show_add
         with op2:
-            if st.button("✏️ Edit", use_container_width=True):
+            if st.button("✏️ Edit", width='stretch'):
                 st.session_state.show_edit = not st.session_state.show_edit
         with op3:
-            if st.button("🔑 Reset Pwd", use_container_width=True):
+            if st.button("🔑 Reset Pwd", width='stretch'):
                 st.session_state.show_reset = not st.session_state.show_reset
         with op4:
-            if st.button("🗑️ Delete", use_container_width=True):
+            if st.button("🗑️ Delete", width='stretch'):
                 st.session_state.show_del = not st.session_state.show_del
 
         if st.session_state.show_add:
@@ -823,7 +823,7 @@ elif st.session_state.user_type == "admin":
             with c2:
                 ns = st.selectbox("Section", config.get_sections(), key="ns")
                 nh = st.selectbox("House", voting.HOUSES, key="nh")
-            if st.button("✅ Add Student", type="primary", use_container_width=True):
+            if st.button("✅ Add Student", type="primary", width='stretch'):
                 if not na or not nn:
                     st.markdown(
                         '<div class="error-box">❌ Admission No and Name are required.</div>',
@@ -889,7 +889,7 @@ elif st.session_state.user_type == "admin":
                                 else 0
                             ),
                         )
-                    if st.button("💾 Save", type="primary", use_container_width=True):
+                    if st.button("💾 Save", type="primary", width='stretch'):
                         if Student(db).update(ea, en, ec, es, eh):
                             st.markdown(
                                 '<div class="success-box">✅ Updated!</div>',
@@ -910,7 +910,7 @@ elif st.session_state.user_type == "admin":
                     key="ra",
                 )
                 if st.button(
-                    "🔄 Generate New Password", type="primary", use_container_width=True
+                    "🔄 Generate New Password", type="primary", width='stretch'
                 ):
                     np_ = Utils.generate_password()
                     if Student(db).reset_password(ra, Auth.hash_password(np_), np_):
@@ -946,7 +946,7 @@ elif st.session_state.user_type == "admin":
                         if st.button(
                             "🗑️ Confirm Delete",
                             type="secondary",
-                            use_container_width=True,
+                            width='stretch',
                         ):
                             if Student(db).delete(da):
                                 st.markdown(
@@ -1031,7 +1031,7 @@ elif st.session_state.user_type == "admin":
                 value=1,
                 help="Set to 2 for Captain + Vice-Captain, 3 for Captain + 2 Vice-Captains, etc.",
             )
-            if st.button("➕ Add Committee", type="primary", use_container_width=True):
+            if st.button("➕ Add Committee", type="primary", width='stretch'):
                 ok, msg = cm.add(ncn, nct, ncd, max_winners=nmw)
                 if ok:
                     audit.log(
@@ -1122,7 +1122,7 @@ elif st.session_state.user_type == "admin":
                             "✅ Approve",
                             key=f"app_{cid}",
                             type="primary",
-                            use_container_width=True,
+                            width='stretch',
                         ):
                             Candidate(db).approve(cid)
                             audit.log("APPROVE_NOM", "admin", f"{name}→{comm}")
@@ -1132,7 +1132,7 @@ elif st.session_state.user_type == "admin":
                             "❌ Reject",
                             key=f"rej_{cid}",
                             type="secondary",
-                            use_container_width=True,
+                            width='stretch',
                         ):
                             Candidate(db).reject(cid)
                             audit.log("REJECT_NOM", "admin", f"{name}→{comm}")
@@ -1228,7 +1228,7 @@ elif st.session_state.user_type == "admin":
                                 unsafe_allow_html=True,
                             )
 
-                if st.button("✅ Nominate", type="primary", use_container_width=True):
+                if st.button("✅ Nominate", type="primary", width='stretch'):
                     if not nom_comm:
                         st.markdown(
                             '<div class="error-box">❌ No committees available.</div>',
@@ -1444,7 +1444,7 @@ elif st.session_state.user_type == "admin":
         # GO LIVE button (SETUP → LIVE)
         with ec1:
             if phase == "setup":
-                if st.button("🚀 GO LIVE", use_container_width=True, type="primary"):
+                if st.button("🚀 GO LIVE", width='stretch', type="primary"):
                     st.session_state.confirm_start = True
                 if st.session_state.confirm_start:
                     st.markdown(
@@ -1474,7 +1474,7 @@ elif st.session_state.user_type == "admin":
         with ec2:
             if phase == "live":
                 if st.button(
-                    "⏹ CLOSE Election", use_container_width=True, type="secondary"
+                    "⏹ CLOSE Election", width='stretch', type="secondary"
                 ):
                     st.session_state.confirm_stop = True
                 if st.session_state.confirm_stop:
@@ -1502,7 +1502,7 @@ elif st.session_state.user_type == "admin":
 
         # RESET button (any phase → SETUP with backup)
         with ec3:
-            if st.button("🔄 RESET Election", use_container_width=True):
+            if st.button("🔄 RESET Election", width='stretch'):
                 st.session_state.confirm_reset = True
             if st.session_state.confirm_reset:
                 st.markdown(
@@ -1573,7 +1573,7 @@ elif st.session_state.user_type == "admin":
                 if pv:
                     st.dataframe(
                         pd.DataFrame(pv, columns=["Adm No", "Name", "Class", "House"]),
-                        use_container_width=True,
+                        width='stretch',
                         hide_index=True,
                     )
                 else:
@@ -1586,7 +1586,7 @@ elif st.session_state.user_type == "admin":
         with rs1:
             rc1, rc2, rc3 = st.columns(3)
             with rc1:
-                if st.button("🔄 Refresh", use_container_width=True):
+                if st.button("🔄 Refresh", width='stretch'):
                     st.rerun()
 
             # Download buttons
@@ -1601,7 +1601,7 @@ elif st.session_state.user_type == "admin":
                         data=res_file,
                         file_name=f'results_{pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")}.xlsx',
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        use_container_width=True,
+                        width='stretch',
                         type="primary",
                     )
             with rc3:
@@ -1612,7 +1612,7 @@ elif st.session_state.user_type == "admin":
                         data=house_file,
                         file_name=f'house_results_{pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")}.xlsx',
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        use_container_width=True,
+                        width='stretch',
                     )
 
             if not results_data:
@@ -1621,168 +1621,17 @@ elif st.session_state.user_type == "admin":
                     unsafe_allow_html=True,
                 )
             else:
-                for ctype in ["School", "House"]:
-                    if ctype not in results_data:
-                        continue
-                    st.markdown(
-                        f"## {'🏫 School Committees' if ctype=='School' else '🏠 House Committees'}",
-                        unsafe_allow_html=True,
-                    )
+                def _admin_tie_break(comm_name, winner_adm, reason):
+                    Vote(db).record_tie_break(comm_name, winner_adm, reason, "admin")
+                    audit.log("TIE_BREAK", "admin", f"{comm_name}: {winner_adm} ({reason})")
 
-                    for comm_name, data in sorted(results_data[ctype].items()):
-                        cands = data["candidates"]
-                        total_cv = data["total_votes"]
-                        max_w = data.get("max_winners", 1)
-                        info = ci(comm_name)
-                        pos_label = f"{max_w} position{'s' if max_w > 1 else ''}"
-
-                        st.markdown(
-                            f"""
-                        <div class="comm-header">
-                            <span class="comm-icon">{info['icon']}</span>
-                            <div>
-                                <div class="comm-title">{comm_name}</div>
-                                <div class="comm-desc">{info['desc']} &nbsp;·&nbsp; {pos_label} &nbsp;·&nbsp; {total_cv} vote(s) cast</div>
-                            </div>
-                        </div>""",
-                            unsafe_allow_html=True,
-                        )
-
-                        if not cands:
-                            continue
-
-                        # Tie banner + tie-break UI
-                        tied_cands = [c for c in cands if c.get("is_tied")]
-                        if tied_cands:
-                            st.markdown(
-                                '<div class="warn-box">⚖️ <strong>TIE</strong> — Multiple candidates share the top position. '
-                                "Use the tie-break tool below to record your decision.</div>",
-                                unsafe_allow_html=True,
-                            )
-
-                            # Tie-break UI (only in CLOSED phase)
-                            if election.is_closed():
-                                with st.expander(f"🔨 Break tie for {comm_name}"):
-                                    options = {c["name"]: c["adm"] for c in tied_cands}
-                                    chosen_name = st.selectbox(
-                                        "Select winner",
-                                        list(options.keys()),
-                                        key=f"tb_sel_{comm_name}",
-                                    )
-                                    reason = st.text_input(
-                                        "Reason (required)",
-                                        key=f"tb_reason_{comm_name}",
-                                        placeholder="e.g. Coin toss, teacher decision, re-vote...",
-                                    )
-                                    if st.button(
-                                        "✅ Confirm Tie-Break",
-                                        key=f"tb_btn_{comm_name}",
-                                        type="primary",
-                                    ):
-                                        if not reason.strip():
-                                            st.error("Reason is required.")
-                                        else:
-                                            Vote(db).record_tie_break(
-                                                comm_name,
-                                                options[chosen_name],
-                                                reason.strip(),
-                                                "admin",
-                                            )
-                                            st.success(
-                                                f"✅ Tie-break recorded: {chosen_name} wins."
-                                            )
-                                            audit.log(
-                                                "TIE_BREAK",
-                                                "admin",
-                                                f"{comm_name}: {chosen_name} ({reason})",
-                                            )
-                                            time.sleep(1)
-                                            st.rerun()
-
-                        # Podium (top 3, only when votes exist)
-                        if total_cv > 0 and len(cands) >= 2:
-                            top3 = cands[:3]
-                            order = [1, 0, 2] if len(top3) >= 3 else [0, 1]
-                            pcols = st.columns(len(order))
-                            for pi, ri in enumerate(order):
-                                if ri < len(top3):
-                                    c_ = top3[ri]
-                                    ph = hm(c_["house"])
-                                    ht = 100 if ri == 0 else (75 if ri == 1 else 55)
-                                    grad = (
-                                        "linear-gradient(180deg,#f59e0b,#d97706)"
-                                        if ri == 0
-                                        else (
-                                            "linear-gradient(180deg,#94a3b8,#64748b)"
-                                            if ri == 1
-                                            else "linear-gradient(180deg,#b45309,#92400e)"
-                                        )
-                                    )
-                                    with pcols[pi]:
-                                        st.html(
-                                            f"""
-                                        <div style="text-align:center;font-family:'Inter',sans-serif;">
-                                            <div style="font-size:.85rem;font-weight:600;color:white;margin-bottom:4px;">
-                                                {avatar(c_['name'])} {c_['name']}
-                                            </div>
-                                            <div style="font-size:.75rem;color:#94a3b8;margin-bottom:6px;">
-                                                {int(c_['votes'])} votes
-                                                {'⚖️ TIE' if c_.get('is_tied') else ''}
-                                            </div>
-                                            <div style="background:{grad};height:{ht}px;border-radius:12px 12px 0 0;
-                                                        display:flex;align-items:center;justify-content:center;font-size:1.8rem;">
-                                                {RANK_ICONS[ri]}
-                                            </div>
-                                        </div>"""
-                                        )
-                            st.html("<br>")
-
-                        # Full ranked list
-                        for i, c_ in enumerate(cands):
-                            ph = hm(c_["house"])
-                            is_win = c_["is_winner"]
-                            is_tied = c_.get("is_tied", False)
-                            card_cls = (
-                                "tied" if is_tied else ("winner" if is_win else "")
-                            )
-                            bar_cls = (
-                                "bar-tied"
-                                if is_tied
-                                else ("bar-winner" if is_win else "bar-normal")
-                            )
-                            rank_ico = (
-                                RANK_ICONS[i] if i < len(RANK_ICONS) else str(i + 1)
-                            )
-                            tie_tag = (
-                                ' <span style="color:#f59e0b;font-size:.75rem;">⚖️ TIE</span>'
-                                if is_tied
-                                else ""
-                            )
-                            result_bg = "rgba(245,158,11,.08)" if is_tied else ("rgba(16,185,129,.08)" if is_win else "rgba(255,255,255,.04)")
-                            result_border = "rgba(245,158,11,.4)" if is_tied else ("rgba(16,185,129,.3)" if is_win else "rgba(255,255,255,.08)")
-                            bar_color = "linear-gradient(90deg,#f59e0b,#fbbf24)" if is_tied else ("linear-gradient(90deg,#10b981,#34d399)" if is_win else "linear-gradient(90deg,#6366f1,#8b5cf6)")
-                            st.html(
-                                f"""
-                            <div style="background:{result_bg};border:1px solid {result_border};border-radius:14px;padding:16px 20px;margin:8px 0;display:flex;align-items:center;gap:16px;font-family:'Inter',sans-serif;">
-                                <span style="font-size:1.6rem;min-width:40px;">{rank_ico}</span>
-                                <span style="font-size:1.4rem;">{avatar(c_['name'])}</span>
-                                <div style="flex:1;">
-                                    <div style="font-weight:700;color:white;font-size:1rem;">{c_['name']}{tie_tag}</div>
-                                    <div style="font-size:.8rem;color:#64748b;margin-top:2px;">
-                                        Class {c_['class']} &nbsp;·&nbsp;
-                                        <span style="color:{ph['color']}">{c_['house']} House</span>
-                                    </div>
-                                </div>
-                                <div style="flex:2;min-width:100px;background:rgba(255,255,255,.07);border-radius:99px;height:8px;overflow:hidden;">
-                                    <div style="width:{c_['pct']}%;height:8px;border-radius:99px;background:{bar_color};"></div>
-                                </div>
-                                <div style="text-align:right;min-width:90px;">
-                                    <div style="font-size:1.1rem;font-weight:800;color:white;">{int(c_['votes'])}</div>
-                                    <div style="font-size:.78rem;color:#64748b;">{c_['pct']}%</div>
-                                </div>
-                            </div>"""
-                            )
-                        st.html("<br>")
+                render_results(
+                    results_data,
+                    show_tie_break=election.is_closed(),
+                    on_tie_break=_admin_tie_break,
+                    student_votes=None,
+                    widget_prefix="admin_rs_",
+                )
 
         with rs2:
             stats = Utils.get_vote_statistics(db)
@@ -1823,7 +1672,7 @@ elif st.session_state.user_type == "admin":
                     list(stats["votes_by_committee"].items()),
                     columns=["Committee", "Votes"],
                 ).sort_values("Votes", ascending=False)
-                st.dataframe(df_vc, use_container_width=True, hide_index=True)
+                st.dataframe(df_vc, width='stretch', hide_index=True)
 
         with rs3:
             logs = audit.get_all()
@@ -1834,15 +1683,17 @@ elif st.session_state.user_type == "admin":
                 df_l["Timestamp"] = df_l["Timestamp"].apply(Utils.format_timestamp)
                 st.dataframe(
                     df_l[["ID", "Action", "User", "Details", "Timestamp"]],
-                    use_container_width=True,
+                    width='stretch',
                     hide_index=True,
                 )
                 st.download_button(
                     "📥 Export Audit Log (CSV)",
                     data=df_l[["ID", "Action", "User", "Details", "Timestamp"]].to_csv(
                         index=False
-                    ),
+                    ).encode("utf-8"),
                     file_name=f'audit_{pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")}.csv',
+                    mime="text/csv",
+                    key="dl_audit_log",
                 )
             else:
                 st.info("No audit logs yet.")
@@ -2022,7 +1873,7 @@ elif st.session_state.user_type == "admin":
                 margin=dict(l=60, r=40, t=60, b=60),
             )
 
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width='stretch')
 
             # Display top 3 and bottom 3 in cards
             col1, col2 = st.columns(2)
@@ -2138,7 +1989,7 @@ elif st.session_state.user_type == "admin":
                 margin=dict(l=80, r=40, t=60, b=60),
             )
 
-            st.plotly_chart(fig_house, use_container_width=True)
+            st.plotly_chart(fig_house, width='stretch')
 
             # Sub-task 4.3.4: Add house competition leaderboard
             st.markdown(
@@ -2343,7 +2194,7 @@ elif st.session_state.user_type == "admin":
                 showlegend=False,
             )
 
-            st.plotly_chart(fig_timeline, use_container_width=True)
+            st.plotly_chart(fig_timeline, width='stretch')
 
             # Show peak hours details
             st.markdown("##### 🔥 Peak Voting Hours", unsafe_allow_html=True)
@@ -2383,7 +2234,7 @@ elif st.session_state.user_type == "admin":
 
                 st.dataframe(
                     df_display[["Date", "Time", "Votes", "% of Total"]],
-                    use_container_width=True,
+                    width='stretch',
                     hide_index=True,
                 )
         else:
@@ -2595,7 +2446,7 @@ elif st.session_state.user_type == "admin":
                 ),
             )
 
-            st.plotly_chart(fig_committee, use_container_width=True)
+            st.plotly_chart(fig_committee, width='stretch')
 
             st.markdown("<br>", unsafe_allow_html=True)
 
@@ -2643,7 +2494,7 @@ elif st.session_state.user_type == "admin":
                 )
 
             df_ratios = pd.DataFrame(ratio_data)
-            st.dataframe(df_ratios, use_container_width=True, hide_index=True)
+            st.dataframe(df_ratios, width='stretch', hide_index=True)
 
             st.markdown("<br>", unsafe_allow_html=True)
 
@@ -2701,15 +2552,17 @@ elif st.session_state.user_type == "admin":
             df_v["Timestamp"] = df_v["Timestamp"].apply(Utils.format_timestamp)
             st.dataframe(
                 df_v[["ID", "Candidate", "Committee", "Timestamp"]],
-                use_container_width=True,
+                width='stretch',
                 hide_index=True,
             )
             st.download_button(
                 "📥 Export Votes CSV",
                 data=df_v[["ID", "Candidate", "Committee", "Timestamp"]].to_csv(
                     index=False
-                ),
+                ).encode("utf-8"),
                 file_name=f'votes_{pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")}.csv',
+                mime="text/csv",
+                key="dl_votes_csv",
             )
             st.divider()
             st.markdown(
@@ -2814,7 +2667,7 @@ elif st.session_state.user_type == "admin":
             col1, col2 = st.columns([3, 1])
             with col2:
                 submit = st.form_submit_button(
-                    "🔄 Change Password", use_container_width=True, type="primary"
+                    "🔄 Change Password", width='stretch', type="primary"
                 )
 
             if submit:
@@ -3144,7 +2997,7 @@ elif st.session_state.user_type == "student":
         )
     with wc2:
         st.markdown("<br>", unsafe_allow_html=True)
-        if st.button("🚪 Logout", type="secondary", use_container_width=True):
+        if st.button("🚪 Logout", type="secondary", width='stretch'):
             audit.log("STUDENT_LOGOUT", fresh[0])
             for k, v in _defaults.items():
                 st.session_state[k] = v
@@ -3192,7 +3045,7 @@ elif st.session_state.user_type == "student":
 
         rc1, rc2 = st.columns(2)
         with rc1:
-            if st.button("🔄 Resume Voting", use_container_width=True, type="primary"):
+            if st.button("🔄 Resume Voting", width='stretch', type="primary"):
                 # Load saved votes into temp_votes
                 st.session_state.temp_votes = st.session_state.valid_saved_votes.copy()
                 st.session_state.has_valid_saved_votes = False  # Hide banner
@@ -3205,7 +3058,7 @@ elif st.session_state.user_type == "student":
                 time.sleep(0.5)
                 st.rerun()
         with rc2:
-            if st.button("🆕 Start Fresh", use_container_width=True, type="secondary"):
+            if st.button("🆕 Start Fresh", width='stretch', type="secondary"):
                 # Clear saved votes and start fresh
                 clear_vote_progress()
                 st.session_state.temp_votes = {}
@@ -3261,7 +3114,7 @@ elif st.session_state.user_type == "student":
                 )
 
         st.markdown("<br>", unsafe_allow_html=True)
-        if st.button("🚪 Logout", key="lo2", use_container_width=True):
+        if st.button("🚪 Logout", key="lo2", width='stretch'):
             audit.log("STUDENT_LOGOUT", fresh[0])
             for k, v in _defaults.items():
                 st.session_state[k] = v
@@ -3450,7 +3303,7 @@ elif st.session_state.user_type == "student":
             )
 
             if st.button(
-                "✋ Submit My Nomination", type="primary", use_container_width=True
+                "✋ Submit My Nomination", type="primary", width='stretch'
             ):
                 if not nom_comm_s:
                     st.markdown(
@@ -3625,7 +3478,7 @@ elif st.session_state.user_type == "student":
                             if st.button(
                                 f"{'✓ ' if is_sel else ''}⬜ Abstain",
                                 key=f"btn_{comm_key}_abstain",
-                                use_container_width=True,
+                                width='stretch',
                                 type="secondary",
                             ):
                                 vote_choices[comm_key] = ABSTAIN
@@ -3671,7 +3524,7 @@ elif st.session_state.user_type == "student":
                             if st.button(
                                 f"{'✓ Selected' if is_sel else '🗳️ Vote for ' + d['name'].split()[0]}",
                                 key=f"btn_{comm_key}_{opt_key}",
-                                use_container_width=True,
+                                width='stretch',
                                 type="primary" if is_sel else "secondary",
                             ):
                                 vote_choices[comm_key] = opt_key
@@ -3721,14 +3574,14 @@ elif st.session_state.user_type == "student":
                 with c1:
                     if st.button(
                         "👁️  Review My Votes →",
-                        use_container_width=True,
+                        width='stretch',
                         type="primary",
                     ):
                         st.session_state.temp_votes = vote_choices
                         st.session_state.review_votes = True
                         st.rerun()
                 with c2:
-                    if st.button("🚪 Exit Without Voting", use_container_width=True):
+                    if st.button("🚪 Exit Without Voting", width='stretch'):
                         audit.log("STUDENT_EXIT_NO_VOTE", fresh[0])
                         for k, v in _defaults.items():
                             st.session_state[k] = v
@@ -3797,7 +3650,7 @@ elif st.session_state.user_type == "student":
             with c1:
                 if st.button(
                     "✅  CONFIRM & SUBMIT MY VOTE",
-                    use_container_width=True,
+                    width='stretch',
                     type="primary",
                 ):
                     success, msg = voting.submit_votes(fresh[0], vote_choices)
@@ -3832,7 +3685,7 @@ elif st.session_state.user_type == "student":
                             unsafe_allow_html=True,
                         )
             with c2:
-                if st.button("🔙 Go Back & Edit", use_container_width=True):
+                if st.button("🔙 Go Back & Edit", width='stretch'):
                     st.session_state.review_votes = False
                     st.rerun()
 
@@ -3863,3 +3716,4 @@ elif st.session_state.user_type == "student":
         f'<div class="civic-fact" style="margin-top:32px;">💡 {fact}</div>',
         unsafe_allow_html=True,
     )
+
