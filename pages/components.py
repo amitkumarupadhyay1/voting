@@ -6,33 +6,33 @@ No DB calls here.
 import random
 
 HOUSE_META = {
-    "Taxila": {
-        "color": "#3b82f6",
-        "bg": "rgba(59,130,246,0.12)",
-        "border": "rgba(59,130,246,0.4)",
+    "Ajanta": {
+        "color": "#4169E1",  # Royal Blue
+        "bg": "rgba(65,105,225,0.12)",
+        "border": "rgba(65,105,225,0.4)",
         "emoji": "🔵",
         "icon": "🏛️",
     },
-    "Janata": {
-        "color": "#22c55e",
-        "bg": "rgba(34,197,94,0.12)",
-        "border": "rgba(34,197,94,0.4)",
-        "emoji": "🟢",
-        "icon": "🌿",
+    "Sanchi": {
+        "color": "#EAB308",  # Yellow
+        "bg": "rgba(234,179,8,0.12)",
+        "border": "rgba(234,179,8,0.4)",
+        "emoji": "🟡",
+        "icon": "🏯",
     },
-    "Saachi": {
-        "color": "#ef4444",
+    "Taxila": {
+        "color": "#EF4444",  # Red
         "bg": "rgba(239,68,68,0.12)",
         "border": "rgba(239,68,68,0.4)",
         "emoji": "🔴",
-        "icon": "🔥",
+        "icon": "🏹",
     },
     "Nalanda": {
-        "color": "#f59e0b",
-        "bg": "rgba(245,158,11,0.12)",
-        "border": "rgba(245,158,11,0.4)",
-        "emoji": "🟡",
-        "icon": "📚",
+        "color": "#22C55E",  # Green
+        "bg": "rgba(34,197,94,0.12)",
+        "border": "rgba(34,197,94,0.4)",
+        "emoji": "🟢",
+        "icon": "📜",
     },
 }
 _DEFAULT_HOUSE = {
@@ -113,11 +113,8 @@ PHASE_LABELS = {
 def hm(house: str) -> dict:
     if not house:
         return _DEFAULT_HOUSE
-    h = str(house).strip().title()
-    # Direct mappings for common variations
-    mapping = {"Ajanta": "Janata", "Sanchi": "Saachi"}
-    normalized = mapping.get(h, h)
-    return HOUSE_META.get(normalized, _DEFAULT_HOUSE)
+    h = str(house).strip()
+    return HOUSE_META.get(h, _DEFAULT_HOUSE)
 
 
 def ci(committee: str) -> dict:

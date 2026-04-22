@@ -40,34 +40,49 @@ st.set_page_config(
 # CONSTANTS
 # ─────────────────────────────────────────────────────────────────────────────
 HOUSE_META = {
-    "Taxila": {
-        "color": "#3b82f6",
-        "bg": "rgba(59,130,246,0.12)",
-        "border": "rgba(59,130,246,0.4)",
+    "Ajanta": {
+        "color": "#4169E1",  # Royal Blue
+        "bg": "rgba(65,105,225,0.12)",
+        "border": "rgba(65,105,225,0.4)",
         "emoji": "🔵",
         "icon": "🏛️",
     },
-    "Janata": {
-        "color": "#22c55e",
-        "bg": "rgba(34,197,94,0.12)",
-        "border": "rgba(34,197,94,0.4)",
-        "emoji": "🟢",
-        "icon": "🌿",
+    "Sanchi": {
+        "color": "#EAB308",  # Yellow
+        "bg": "rgba(234,179,8,0.12)",
+        "border": "rgba(234,179,8,0.4)",
+        "emoji": "🟡",
+        "icon": "🏯",
     },
-    "Saachi": {
-        "color": "#ef4444",
+    "Taxila": {
+        "color": "#EF4444",  # Red
         "bg": "rgba(239,68,68,0.12)",
         "border": "rgba(239,68,68,0.4)",
         "emoji": "🔴",
-        "icon": "🔥",
+        "icon": "🏹",
     },
     "Nalanda": {
-        "color": "#f59e0b",
-        "bg": "rgba(245,158,11,0.12)",
-        "border": "rgba(245,158,11,0.4)",
-        "emoji": "🟡",
-        "icon": "📚",
+        "color": "#22C55E",  # Green
+        "bg": "rgba(34,197,94,0.12)",
+        "border": "rgba(34,197,94,0.4)",
+        "emoji": "🟢",
+        "icon": "📜",
     },
+    # Stale code commented out
+    # "Janata": {
+    #     "color": "#22c55e",
+    #     "bg": "rgba(34,197,94,0.12)",
+    #     "border": "rgba(34,197,94,0.4)",
+    #     "emoji": "🟢",
+    #     "icon": "🌿",
+    # },
+    # "Saachi": {
+    #     "color": "#ef4444",
+    #     "bg": "rgba(239,68,68,0.12)",
+    #     "border": "rgba(239,68,68,0.4)",
+    #     "emoji": "🔴",
+    #     "icon": "🔥",
+    # },
 }
 DEFAULT_HOUSE = {
     "color": "#6366f1",
@@ -143,7 +158,24 @@ def avatar(name: str) -> str:
 
 
 def hm(house: str) -> dict:
-    return HOUSE_META.get(house, DEFAULT_HOUSE)
+    """House Metadata helper with DB override support."""
+    if not house:
+        return DEFAULT_HOUSE
+    h = str(house).strip()
+
+    # Try DB override first
+    db_meta = config.get_house_meta().get(h)
+    if db_meta:
+        # Precompute bg and border if not stored
+        if "color" in db_meta and ("bg" not in db_meta or "border" not in db_meta):
+            c = db_meta["color"].lstrip("#")
+            rgb = tuple(int(c[i : i + 2], 16) for i in (0, 2, 4))
+            db_meta["bg"] = f"rgba({rgb[0]},{rgb[1]},{rgb[2]},0.12)"
+            db_meta["border"] = f"rgba({rgb[0]},{rgb[1]},{rgb[2]},0.4)"
+        return db_meta
+
+    # Fallback to hardcoded
+    return HOUSE_META.get(h, DEFAULT_HOUSE)
 
 
 def ci(committee: str) -> dict:
@@ -159,7 +191,8 @@ st.markdown(
     """
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
-*,*::before,*::after{font-family:'Inter',sans-serif!important;box-sizing:border-box;text-rendering:optimizeLegibility;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
+body, .stApp {font-family:'Inter',sans-serif!important;box-sizing:border-box;text-rendering:optimizeLegibility;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
+*,*::before,*::after{box-sizing:inherit}
 .stApp{background:radial-gradient(ellipse at 20% 50%,#1a0533 0%,#0a0a1a 40%,#001a33 100%);min-height:100vh;color:#e2e8f0}
 header,footer,#MainMenu{visibility:hidden!important}
 .block-container{padding-top:1rem!important}
@@ -246,7 +279,7 @@ header,footer,#MainMenu{visibility:hidden!important}
 .stButton>button{border-radius:12px!important;font-weight:600!important;transition:all .2s ease!important;letter-spacing:.2px!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;display:inline-flex!important;align-items:center!important;justify-content:center!important;gap:6px!important}
 .stButton>button[kind="primary"]{background:linear-gradient(135deg,#6366f1,#8b5cf6)!important;border:none!important;box-shadow:0 4px 20px rgba(99,102,241,.35)!important}
 .stButton>button[kind="primary"]:hover{transform:translateY(-2px)!important;box-shadow:0 8px 30px rgba(99,102,241,.5)!important}
-.stTextInput>div>div>input,.stTextArea textarea,.stSelectbox>div>div,.stNumberInput>div>div>input{background:rgba(255,255,255,.07)!important;border:1px solid rgba(255,255,255,.12)!important;border-radius:10px!important;color:white!important}
+.stTextInput>div>div>input,.stTextArea textarea,.stSelectbox>div>div,.stNumberInput>div>div>input{background:rgba(255,255,255,.07)!important;border:1px solid rgba(255,255,255,.12)!important;border-radius:10px!important;color:black!important}
 .stTextInput>div>div>input:focus,.stTextArea textarea:focus{border-color:rgba(99,102,241,.6)!important;box-shadow:0 0 0 3px rgba(99,102,241,.15)!important}
 .stDataFrame{border-radius:12px!important;overflow:hidden}
 [data-testid="stFileUploader"] label{display:none!important}
@@ -332,6 +365,7 @@ def init():
     voting = VotingEngine(db)
     elec = Election(db)
     alog = AuditLog(db)
+    # Forced refresh to load new class methods
     conf = Config(db)
     return db, auth, voting, elec, alog, conf
 
@@ -1685,9 +1719,9 @@ elif st.session_state.user_type == "admin":
                                         )
                                     )
                                     with pcols[pi]:
-                                        st.markdown(
+                                        st.html(
                                             f"""
-                                        <div style="text-align:center;">
+                                        <div style="text-align:center;font-family:'Inter',sans-serif;">
                                             <div style="font-size:.85rem;font-weight:600;color:white;margin-bottom:4px;">
                                                 {avatar(c_['name'])} {c_['name']}
                                             </div>
@@ -1699,10 +1733,9 @@ elif st.session_state.user_type == "admin":
                                                         display:flex;align-items:center;justify-content:center;font-size:1.8rem;">
                                                 {RANK_ICONS[ri]}
                                             </div>
-                                        </div>""",
-                                            unsafe_allow_html=True,
+                                        </div>"""
                                         )
-                            st.markdown("<br>", unsafe_allow_html=True)
+                            st.html("<br>")
 
                         # Full ranked list
                         for i, c_ in enumerate(cands):
@@ -1725,29 +1758,31 @@ elif st.session_state.user_type == "admin":
                                 if is_tied
                                 else ""
                             )
-                            st.markdown(
+                            result_bg = "rgba(245,158,11,.08)" if is_tied else ("rgba(16,185,129,.08)" if is_win else "rgba(255,255,255,.04)")
+                            result_border = "rgba(245,158,11,.4)" if is_tied else ("rgba(16,185,129,.3)" if is_win else "rgba(255,255,255,.08)")
+                            bar_color = "linear-gradient(90deg,#f59e0b,#fbbf24)" if is_tied else ("linear-gradient(90deg,#10b981,#34d399)" if is_win else "linear-gradient(90deg,#6366f1,#8b5cf6)")
+                            st.html(
                                 f"""
-                            <div class="result-card {card_cls}">
-                                <span class="result-rank">{rank_ico}</span>
+                            <div style="background:{result_bg};border:1px solid {result_border};border-radius:14px;padding:16px 20px;margin:8px 0;display:flex;align-items:center;gap:16px;font-family:'Inter',sans-serif;">
+                                <span style="font-size:1.6rem;min-width:40px;">{rank_ico}</span>
                                 <span style="font-size:1.4rem;">{avatar(c_['name'])}</span>
-                                <div class="result-info">
-                                    <div class="result-name">{c_['name']}{tie_tag}</div>
-                                    <div class="result-sub">
+                                <div style="flex:1;">
+                                    <div style="font-weight:700;color:white;font-size:1rem;">{c_['name']}{tie_tag}</div>
+                                    <div style="font-size:.8rem;color:#64748b;margin-top:2px;">
                                         Class {c_['class']} &nbsp;·&nbsp;
                                         <span style="color:{ph['color']}">{c_['house']} House</span>
                                     </div>
                                 </div>
-                                <div class="bar-wrap">
-                                    <div class="bar-fill {bar_cls}" style="width:{c_['pct']}%;"></div>
+                                <div style="flex:2;min-width:100px;background:rgba(255,255,255,.07);border-radius:99px;height:8px;overflow:hidden;">
+                                    <div style="width:{c_['pct']}%;height:8px;border-radius:99px;background:{bar_color};"></div>
                                 </div>
-                                <div class="result-right">
-                                    <div class="result-votes">{int(c_['votes'])}</div>
-                                    <div class="result-pct">{c_['pct']}%</div>
+                                <div style="text-align:right;min-width:90px;">
+                                    <div style="font-size:1.1rem;font-weight:800;color:white;">{int(c_['votes'])}</div>
+                                    <div style="font-size:.78rem;color:#64748b;">{c_['pct']}%</div>
                                 </div>
-                            </div>""",
-                                unsafe_allow_html=True,
+                            </div>"""
                             )
-                        st.markdown("<br>", unsafe_allow_html=True)
+                        st.html("<br>")
 
         with rs2:
             stats = Utils.get_vote_statistics(db)
@@ -1771,16 +1806,16 @@ elif st.session_state.user_type == "admin":
                 ).fetchone()[0]
                 pct_h = (voted_h / total_h * 100) if total_h > 0 else 0
                 h_ = hm(house)
-                hcols[i].markdown(
-                    f"""
-                <div class="house-card" style="background:{h_['bg']};border-color:{h_['border']};">
-                    <div style="font-size:2rem;">{h_['icon']}</div>
-                    <div style="font-weight:700;color:{h_['color']};font-size:1rem;">{house}</div>
-                    <div style="font-size:1.4rem;font-weight:800;color:white;">{voted_h}/{total_h}</div>
-                    <div style="font-size:.78rem;color:#94a3b8;">{pct_h:.0f}% voted</div>
-                </div>""",
-                    unsafe_allow_html=True,
-                )
+                with hcols[i]:
+                    st.html(
+                        f"""
+                    <div style="border-radius:16px;padding:20px;text-align:center;border:1px solid {h_['border']};background:{h_['bg']};font-family:'Inter',sans-serif;">
+                        <div style="font-size:2rem;">{h_['icon']}</div>
+                        <div style="font-weight:700;color:{h_['color']};font-size:1rem;">{house}</div>
+                        <div style="font-size:1.4rem;font-weight:800;color:white;">{voted_h}/{total_h}</div>
+                        <div style="font-size:.78rem;color:#94a3b8;">{pct_h:.0f}% voted</div>
+                    </div>"""
+                    )
 
             if stats.get("votes_by_committee"):
                 st.markdown("<br>**Votes by Committee**", unsafe_allow_html=True)
@@ -1829,49 +1864,17 @@ elif st.session_state.user_type == "admin":
         stats = election.get_statistics()
 
         with m1:
-            st.markdown(
-                f"""
-            <div class="stat-card">
-                <div class="stat-num">{stats['total_students']}</div>
-                <div class="stat-label">Total Students</div>
-            </div>
-            """,
-                unsafe_allow_html=True,
-            )
+            st.html(f'<div style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:20px 16px;text-align:center;font-family:Inter,sans-serif;"><div style="font-size:2rem;font-weight:800;color:#818cf8;line-height:1;">{stats["total_students"]}</div><div style="font-size:.78rem;color:#64748b;margin-top:6px;text-transform:uppercase;letter-spacing:.5px;">Total Students</div></div>')
 
         with m2:
-            st.markdown(
-                f"""
-            <div class="stat-card">
-                <div class="stat-num">{stats['voted_students']}</div>
-                <div class="stat-label">Students Voted</div>
-            </div>
-            """,
-                unsafe_allow_html=True,
-            )
+            st.html(f'<div style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:20px 16px;text-align:center;font-family:Inter,sans-serif;"><div style="font-size:2rem;font-weight:800;color:#818cf8;line-height:1;">{stats["voted_students"]}</div><div style="font-size:.78rem;color:#64748b;margin-top:6px;text-transform:uppercase;letter-spacing:.5px;">Students Voted</div></div>')
 
         with m3:
-            st.markdown(
-                f"""
-            <div class="stat-card">
-                <div class="stat-num">{stats['participation_rate']:.1f}%</div>
-                <div class="stat-label">Participation Rate</div>
-            </div>
-            """,
-                unsafe_allow_html=True,
-            )
+            st.html(f'<div style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:20px 16px;text-align:center;font-family:Inter,sans-serif;"><div style="font-size:2rem;font-weight:800;color:#818cf8;line-height:1;">{stats["participation_rate"]:.1f}%</div><div style="font-size:.78rem;color:#64748b;margin-top:6px;text-transform:uppercase;letter-spacing:.5px;">Participation Rate</div></div>')
 
         with m4:
             total_votes = stats.get("total_votes", 0)
-            st.markdown(
-                f"""
-            <div class="stat-card">
-                <div class="stat-num">{total_votes}</div>
-                <div class="stat-label">Total Votes Cast</div>
-            </div>
-            """,
-                unsafe_allow_html=True,
-            )
+            st.html(f'<div style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:20px 16px;text-align:center;font-family:Inter,sans-serif;"><div style="font-size:2rem;font-weight:800;color:#818cf8;line-height:1;">{total_votes}</div><div style="font-size:.78rem;color:#64748b;margin-top:6px;text-transform:uppercase;letter-spacing:.5px;">Total Votes Cast</div></div>')
 
         st.markdown("<br>", unsafe_allow_html=True)
 
@@ -1885,49 +1888,17 @@ elif st.session_state.user_type == "admin":
         c1, c2, c3, c4 = st.columns(4)
 
         with c1:
-            st.markdown(
-                f"""
-            <div class="stat-card">
-                <div class="stat-num">{len(committees)}</div>
-                <div class="stat-label">Total Committees</div>
-            </div>
-            """,
-                unsafe_allow_html=True,
-            )
+            st.html(f'<div style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:20px 16px;text-align:center;font-family:Inter,sans-serif;"><div style="font-size:2rem;font-weight:800;color:#818cf8;line-height:1;">{len(committees)}</div><div style="font-size:.78rem;color:#64748b;margin-top:6px;text-transform:uppercase;letter-spacing:.5px;">Total Committees</div></div>')
 
         with c2:
-            st.markdown(
-                f"""
-            <div class="stat-card">
-                <div class="stat-num">{len(school_committees)}</div>
-                <div class="stat-label">School Committees</div>
-            </div>
-            """,
-                unsafe_allow_html=True,
-            )
+            st.html(f'<div style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:20px 16px;text-align:center;font-family:Inter,sans-serif;"><div style="font-size:2rem;font-weight:800;color:#818cf8;line-height:1;">{len(school_committees)}</div><div style="font-size:.78rem;color:#64748b;margin-top:6px;text-transform:uppercase;letter-spacing:.5px;">School Committees</div></div>')
 
         with c3:
-            st.markdown(
-                f"""
-            <div class="stat-card">
-                <div class="stat-num">{len(house_committees)}</div>
-                <div class="stat-label">House Committees</div>
-            </div>
-            """,
-                unsafe_allow_html=True,
-            )
+            st.html(f'<div style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:20px 16px;text-align:center;font-family:Inter,sans-serif;"><div style="font-size:2rem;font-weight:800;color:#818cf8;line-height:1;">{len(house_committees)}</div><div style="font-size:.78rem;color:#64748b;margin-top:6px;text-transform:uppercase;letter-spacing:.5px;">House Committees</div></div>')
 
         with c4:
             total_candidates = len(Candidate(db).get_all())
-            st.markdown(
-                f"""
-            <div class="stat-card">
-                <div class="stat-num">{total_candidates}</div>
-                <div class="stat-label">Total Candidates</div>
-            </div>
-            """,
-                unsafe_allow_html=True,
-            )
+            st.html(f'<div style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:20px 16px;text-align:center;font-family:Inter,sans-serif;"><div style="font-size:2rem;font-weight:800;color:#818cf8;line-height:1;">{total_candidates}</div><div style="font-size:.78rem;color:#64748b;margin-top:6px;text-transform:uppercase;letter-spacing:.5px;">Total Candidates</div></div>')
 
         st.markdown("<br>", unsafe_allow_html=True)
 
@@ -1946,16 +1917,15 @@ elif st.session_state.user_type == "admin":
             h_ = hm(house)
 
             with house_cols[i]:
-                st.markdown(
+                st.html(
                     f"""
-                <div class="house-card" style="background:{h_['bg']};border-color:{h_['border']};">
+                <div style="border-radius:16px;padding:20px;text-align:center;border:1px solid {h_['border']};background:{h_['bg']};font-family:'Inter',sans-serif;">
                     <div style="font-size:2rem;">{h_['icon']}</div>
                     <div style="font-weight:700;color:{h_['color']};font-size:1rem;">{house}</div>
                     <div style="font-size:1.4rem;font-weight:800;color:white;">{voted_h}/{total_h}</div>
                     <div style="font-size:.78rem;color:#94a3b8;">{pct_h:.1f}% voted</div>
                 </div>
-                """,
-                    unsafe_allow_html=True,
+                """
                 )
 
         st.markdown("<br>", unsafe_allow_html=True)
@@ -2061,15 +2031,14 @@ elif st.session_state.user_type == "admin":
                 st.markdown("##### 🏆 Top 3 Performing Classes", unsafe_allow_html=True)
                 for i, cls in enumerate(sorted_by_rate[:3], 1):
                     medal = ["🥇", "🥈", "🥉"][i - 1]
-                    st.markdown(
+                    st.html(
                         f"""
-                    <div class="stat-card" style="background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.3);">
+                    <div style="background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.3);border-radius:16px;padding:20px 16px;text-align:center;margin:8px 0;font-family:'Inter',sans-serif;">
                         <div style="font-size:1.5rem;">{medal} Class {cls['class']}</div>
                         <div style="font-size:1.2rem;font-weight:700;color:#22c55e;">{cls['participation_rate']}%</div>
                         <div style="font-size:0.9rem;color:#94a3b8;">{cls['voted']} out of {cls['total']} students voted</div>
                     </div>
-                    """,
-                        unsafe_allow_html=True,
+                    """
                     )
 
             with col2:
@@ -2077,15 +2046,14 @@ elif st.session_state.user_type == "admin":
                     "##### 📉 Bottom 3 Performing Classes", unsafe_allow_html=True
                 )
                 for i, cls in enumerate(sorted_by_rate[-3:][::-1], 1):
-                    st.markdown(
+                    st.html(
                         f"""
-                    <div class="stat-card" style="background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);">
+                    <div style="background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:16px;padding:20px 16px;text-align:center;margin:8px 0;font-family:'Inter',sans-serif;">
                         <div style="font-size:1.5rem;">Class {cls['class']}</div>
                         <div style="font-size:1.2rem;font-weight:700;color:#ef4444;">{cls['participation_rate']}%</div>
                         <div style="font-size:0.9rem;color:#94a3b8;">{cls['voted']} out of {cls['total']} students voted</div>
                     </div>
-                    """,
-                        unsafe_allow_html=True,
+                    """
                     )
         else:
             st.info("No class data available yet.")
@@ -2956,25 +2924,58 @@ elif st.session_state.user_type == "admin":
         with c1:
             st.markdown("##### 🏠 Houses", unsafe_allow_html=True)
             current_houses = voting.HOUSES
-            for h in current_houses:
-                hc1, hc2 = st.columns([4, 1])
-                hc1.text(h)
-                if hc2.button("🗑️", key=f"del_h_{h}"):
-                    # Check if any student belongs to this house
-                    if (
-                        db.execute(
-                            "SELECT COUNT(*) FROM students WHERE house=?", (h,)
-                        ).fetchone()[0]
-                        > 0
-                    ):
-                        st.error(f"Cannot delete '{h}' — students belong to it.")
-                    else:
-                        new_h = [x for x in current_houses if x != h]
-                        config.set_houses(new_h)
-                        audit.log("CONFIG_DELETE_HOUSE", "admin", h)
+            house_meta = config.get_house_meta()
+
+            for h_name in current_houses:
+                h_info = hm(h_name)
+                with st.expander(f"{h_info['emoji']} {h_name}", expanded=False):
+                    # Metadata Editing
+                    new_color = st.color_picker(
+                        "Color", value=h_info["color"], key=f"cp_{h_name}"
+                    )
+                    new_emoji = st.text_input(
+                        "Emoji", value=h_info["emoji"], key=f"em_{h_name}"
+                    )
+                    new_icon = st.text_input(
+                        "Icon", value=h_info["icon"], key=f"ic_{h_name}"
+                    )
+
+                    if st.button(f"💾 Save {h_name}", key=f"save_h_{h_name}"):
+                        house_meta[h_name] = {
+                            "color": new_color,
+                            "emoji": new_emoji,
+                            "icon": new_icon,
+                        }
+                        config.set_house_meta(house_meta)
+                        audit.log(
+                            "CONFIG_UPDATE_HOUSE_META", "admin", f"{h_name}: {new_color}"
+                        )
                         st.rerun()
 
-            new_house = st.text_input("New House", key="new_house_input").strip()
+                    st.divider()
+                    if st.button(
+                        f"🗑️ Delete {h_name}", key=f"del_h_{h_name}", type="secondary"
+                    ):
+                        # Check if any student belongs to this house
+                        if (
+                            db.execute(
+                                "SELECT COUNT(*) FROM students WHERE house=?", (h_name,)
+                            ).fetchone()[0]
+                            > 0
+                        ):
+                            st.error(f"Cannot delete '{h_name}' — students belong to it.")
+                        else:
+                            new_h_list = [x for x in current_houses if x != h_name]
+                            config.set_houses(new_h_list)
+                            # Also clean up meta
+                            if h_name in house_meta:
+                                del house_meta[h_name]
+                                config.set_house_meta(house_meta)
+                            audit.log("CONFIG_DELETE_HOUSE", "admin", h_name)
+                            st.rerun()
+
+            st.write("---")
+            new_house = st.text_input("New House Name", key="new_house_input").strip()
             if st.button("➕ Add House"):
                 if new_house and new_house not in current_houses:
                     config.set_houses(current_houses + [new_house])
@@ -3418,8 +3419,16 @@ elif st.session_state.user_type == "student":
                                 if manifesto
                                 else '<div class="cand-manifesto" style="opacity:0.6;">No manifesto provided</div>'
                             )
-                            st.markdown(
+                            st.html(
                                 f"""
+                            <style>
+                            .cand-card{{background:rgba(255,255,255,.05);border:2px solid rgba(255,255,255,.08);border-radius:18px;padding:22px 18px;text-align:center;cursor:default;transition:all .25s ease;position:relative;overflow:hidden;font-family:'Inter',sans-serif;}}
+                            .cand-avatar{{font-size:3rem;margin-bottom:10px;display:block;}}
+                            .cand-name{{font-size:1.05rem;font-weight:700;color:white;margin-bottom:4px;}}
+                            .cand-meta{{font-size:.8rem;color:#94a3b8;}}
+                            .cand-house{{font-size:.78rem;font-weight:600;margin-top:6px;}}
+                            .cand-manifesto{{margin-top:12px;padding:10px 12px;background:rgba(0,0,0,.25);border-radius:10px;border-left:3px solid #6366f1;font-size:.78rem;color:#cbd5e1;font-style:italic;text-align:left;line-height:1.5;}}
+                            </style>
                             <div class="cand-card" style="cursor:default;margin-bottom:12px;">
                                 <span class="cand-avatar">{avatar(name or adm)}</span>
                                 <div class="cand-name">{name or adm}</div>
@@ -3427,8 +3436,7 @@ elif st.session_state.user_type == "student":
                                 <div class="cand-house" style="color:{h_meta['color']};">{h_meta['emoji']} {house or '?'} House</div>
                                 {manifesto_html}
                             </div>
-                            """,
-                                unsafe_allow_html=True,
+                            """
                             )
 
             nom_man_s = st.text_area(
@@ -3638,17 +3646,27 @@ elif st.session_state.user_type == "student":
                                 if d["manifesto"]
                                 else ""
                             )
-                            st.markdown(
+                            card_class = "cand-card selected" if is_sel else "cand-card"
+                            st.html(
                                 f"""
-                            <div class="cand-card {'selected' if is_sel else ''}" style="position:relative;">
+                            <style>
+                            .cand-card{{background:rgba(255,255,255,.05);border:2px solid rgba(255,255,255,.08);border-radius:18px;padding:22px 18px;text-align:center;cursor:pointer;transition:all .25s ease;position:relative;overflow:hidden;font-family:'Inter',sans-serif;}}
+                            .cand-card.selected{{border-color:#10b981!important;background:rgba(16,185,129,.12)!important;box-shadow:0 0 0 3px rgba(16,185,129,.2),0 12px 40px rgba(16,185,129,.15);}}
+                            .cand-avatar{{font-size:3rem;margin-bottom:10px;display:block;}}
+                            .cand-name{{font-size:1.05rem;font-weight:700;color:white;margin-bottom:4px;}}
+                            .cand-meta{{font-size:.8rem;color:#94a3b8;}}
+                            .cand-house{{font-size:.78rem;font-weight:600;margin-top:6px;}}
+                            .cand-manifesto{{margin-top:12px;padding:10px 12px;background:rgba(0,0,0,.25);border-radius:10px;border-left:3px solid #6366f1;font-size:.78rem;color:#cbd5e1;font-style:italic;text-align:left;line-height:1.5;}}
+                            .cand-selected-check{{position:absolute;top:12px;right:12px;background:#10b981;color:white;border-radius:50%;width:24px;height:24px;display:flex;align-items:center;justify-content:center;font-size:.75rem;font-weight:700;}}
+                            </style>
+                            <div class="{card_class}" style="position:relative;">
                                 {check}
                                 <span class="cand-avatar">{avatar(d['name'])}</span>
                                 <div class="cand-name">{d['name']}</div>
                                 <div class="cand-meta">Class {d['class']} · Section {d['sec']}</div>
                                 <div class="cand-house" style="color:{ch['color']};">{ch['emoji']} {d['house']} House</div>
                                 {manifesto_html}
-                            </div>""",
-                                unsafe_allow_html=True,
+                            </div>"""
                             )
                             if st.button(
                                 f"{'✓ Selected' if is_sel else '🗳️ Vote for ' + d['name'].split()[0]}",
@@ -3661,7 +3679,7 @@ elif st.session_state.user_type == "student":
                                 # Auto-save vote progress
                                 save_vote_progress(fresh[0], vote_choices)
                                 st.rerun()
-                st.markdown("<br>", unsafe_allow_html=True)
+                st.html("<br>")
                 return vote_choices
 
             school_shown = False

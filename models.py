@@ -1161,3 +1161,8 @@ class Config:
                 list(set(str(s).strip().upper() for s in sections if str(s).strip()))
             ),
         )
+    def get_house_meta(self) -> Dict[str, Dict]:
+        return self._get("house_meta", {})
+
+    def set_house_meta(self, meta: Dict[str, Dict]):
+        self._set("house_meta", meta)

@@ -156,7 +156,7 @@ class Utils:
         House-wise breakdown: one sheet per house showing all house committee results.
         """
 
-        houses = ["Taxila", "Janata", "Saachi", "Nalanda"]
+        houses = ["Ajanta", "Sanchi", "Taxila", "Nalanda"]
         output = BytesIO()
         with pd.ExcelWriter(output, engine="openpyxl") as writer:
             for house in houses:
