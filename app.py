@@ -393,6 +393,10 @@ _defaults = {
     "saved_votes": None,
     "saved_votes_timestamp": None,
     "warning_autosave_done": False,
+    "edit_student_msg": None,
+    "edit_student_msg_adm": None,
+    "reset_pwd_msg": None,
+    "reset_pwd_msg_adm": None,
 }
 for k, v in _defaults.items():
     if k not in st.session_state:
@@ -851,12 +855,14 @@ elif st.session_state.user_type == "admin":
             sl = Student(db).get_all()
             if sl:
                 s_map = {s[0]: f"{s[1]} (Class {s[2]}-{s[3]})" for s in sl}
+                # Build a dict for O(1) lookup — avoids a second DB call per selection
+                sl_dict = {s[0]: s for s in sl}
                 ea = st.selectbox(
                     "Select",
                     [s[0] for s in sl],
                     format_func=lambda x: f"{x} — {s_map.get(x, x)}",
                 )
-                s = Student(db).get(ea)
+                s = sl_dict.get(ea)
                 if s:
                     c1, c2 = st.columns(2)
                     with c1:
@@ -891,12 +897,22 @@ elif st.session_state.user_type == "admin":
                         )
                     if st.button("💾 Save", type="primary", width='stretch'):
                         if Student(db).update(ea, en, ec, es, eh):
-                            st.markdown(
-                                '<div class="success-box">✅ Updated!</div>',
-                                unsafe_allow_html=True,
-                            )
                             audit.log("EDIT_STUDENT", "admin", f"{en} ({ea})")
-                            st.rerun()
+                            st.session_state["edit_student_msg"] = ("success", f"✅ {en} updated successfully!")
+                            st.session_state["edit_student_msg_adm"] = ea
+                        else:
+                            st.session_state["edit_student_msg"] = ("error", "❌ Update failed. Please try again.")
+                            st.session_state["edit_student_msg_adm"] = ea
+
+                    # Show persistent feedback message
+                    msg_info = st.session_state.get("edit_student_msg")
+                    msg_adm = st.session_state.get("edit_student_msg_adm")
+                    if msg_info and msg_adm == ea:
+                        kind, text = msg_info
+                        if kind == "success":
+                            st.success(text)
+                        else:
+                            st.error(text)
 
         if st.session_state.show_reset:
             st.markdown("#### 🔑 Reset Password", unsafe_allow_html=True)
@@ -914,24 +930,36 @@ elif st.session_state.user_type == "admin":
                 ):
                     np_ = Utils.generate_password()
                     if Student(db).reset_password(ra, Auth.hash_password(np_), np_):
-                        st.markdown(
-                            f'<div class="success-box">✅ New password: <strong>{np_}</strong></div>',
-                            unsafe_allow_html=True,
-                        )
+                        st.session_state["reset_pwd_msg"] = ("success", f"✅ New password for {ra}: **{np_}**")
+                        st.session_state["reset_pwd_msg_adm"] = ra
                         audit.log("RESET_PASSWORD", "admin", f"Reset for {ra}")
+                    else:
+                        st.session_state["reset_pwd_msg"] = ("error", "❌ Password reset failed.")
+                        st.session_state["reset_pwd_msg_adm"] = ra
+
+                # Show persistent feedback
+                msg_info = st.session_state.get("reset_pwd_msg")
+                msg_adm = st.session_state.get("reset_pwd_msg_adm")
+                if msg_info and msg_adm == ra:
+                    kind, text = msg_info
+                    if kind == "success":
+                        st.success(text)
+                    else:
+                        st.error(text)
 
         if st.session_state.show_del:
             st.markdown("#### 🗑️ Delete Student", unsafe_allow_html=True)
             sl = Student(db).get_all()
             if sl:
                 s_map = {s[0]: f"{s[1]} (Class {s[2]}-{s[3]})" for s in sl}
+                sl_dict = {s[0]: s for s in sl}
                 da = st.selectbox(
                     "Select",
                     [s[0] for s in sl],
                     format_func=lambda x: f"{x} — {s_map.get(x, x)}",
                     key="da",
                 )
-                s = Student(db).get(da)
+                s = sl_dict.get(da)
                 if s:
                     st.markdown(
                         f'<div class="warn-box">⚠️ Delete <strong>{s[1]}</strong> ({da})?</div>',
@@ -949,10 +977,7 @@ elif st.session_state.user_type == "admin":
                             width='stretch',
                         ):
                             if Student(db).delete(da):
-                                st.markdown(
-                                    f'<div class="success-box">✅ Deleted {s[1]}</div>',
-                                    unsafe_allow_html=True,
-                                )
+                                st.success(f"✅ Deleted {s[1]}")
                                 audit.log("DELETE_STUDENT", "admin", f"{s[1]} ({da})")
                                 st.rerun()
 
@@ -1188,7 +1213,7 @@ elif st.session_state.user_type == "admin":
                         )
                         nom_hs = st.selectbox("House", houses_list, index=hs_idx)
 
-                        group_options = ["Junior (7-8)", "Senior (9-12)"]
+                        group_options = ["Junior (6-8)", "Senior (9-12)"]
                         grp_idx = 0
                         if student_class:
                             try:
@@ -1439,6 +1464,68 @@ elif st.session_state.user_type == "admin":
             )
 
         st.markdown("<br>", unsafe_allow_html=True)
+
+        # ── Committee-type toggles (only visible when LIVE) ───────────────────
+        if phase == "live":
+            st.markdown("### 🎛️ Committee Type Controls", unsafe_allow_html=True)
+            st.markdown(
+                '<div class="info-box">⚙️ Toggle voting on/off independently for <strong>School</strong> and <strong>House</strong> committees. '
+                "Students will only see candidates for committee types that are currently enabled.</div>",
+                unsafe_allow_html=True,
+            )
+            comm_status = election.get_committee_type_status()
+            school_live = comm_status["School"]
+            house_live = comm_status["House"]
+
+            ct1, ct2 = st.columns(2)
+            with ct1:
+                school_color = "rgba(16,185,129,.12)" if school_live else "rgba(100,116,139,.12)"
+                school_border = "rgba(16,185,129,.4)" if school_live else "rgba(100,116,139,.4)"
+                school_label = "🟢 School Election: ON" if school_live else "⚫ School Election: OFF"
+                school_text_color = "#6ee7b7" if school_live else "#94a3b8"
+                st.markdown(
+                    f'<div style="background:{school_color};border:1px solid {school_border};'
+                    f'border-radius:14px;padding:16px;text-align:center;margin-bottom:10px;">'
+                    f'<strong style="color:{school_text_color};font-size:1rem;">🏫 {school_label}</strong><br>'
+                    f'<span style="color:#94a3b8;font-size:.8rem;">School committee voting</span></div>',
+                    unsafe_allow_html=True,
+                )
+                if school_live:
+                    if st.button("⏸ Pause School Voting", key="pause_school", width='stretch', type="secondary"):
+                        election.set_committee_type_live("School", False)
+                        audit.log("TOGGLE_COMMITTEE_TYPE", "admin", "School → OFF")
+                        st.rerun()
+                else:
+                    if st.button("▶ Resume School Voting", key="resume_school", width='stretch', type="primary"):
+                        election.set_committee_type_live("School", True)
+                        audit.log("TOGGLE_COMMITTEE_TYPE", "admin", "School → ON")
+                        st.rerun()
+
+            with ct2:
+                house_color = "rgba(16,185,129,.12)" if house_live else "rgba(100,116,139,.12)"
+                house_border = "rgba(16,185,129,.4)" if house_live else "rgba(100,116,139,.4)"
+                house_label = "🟢 House Election: ON" if house_live else "⚫ House Election: OFF"
+                house_text_color = "#6ee7b7" if house_live else "#94a3b8"
+                st.markdown(
+                    f'<div style="background:{house_color};border:1px solid {house_border};'
+                    f'border-radius:14px;padding:16px;text-align:center;margin-bottom:10px;">'
+                    f'<strong style="color:{house_text_color};font-size:1rem;">🏠 {house_label}</strong><br>'
+                    f'<span style="color:#94a3b8;font-size:.8rem;">House committee voting</span></div>',
+                    unsafe_allow_html=True,
+                )
+                if house_live:
+                    if st.button("⏸ Pause House Voting", key="pause_house", width='stretch', type="secondary"):
+                        election.set_committee_type_live("House", False)
+                        audit.log("TOGGLE_COMMITTEE_TYPE", "admin", "House → OFF")
+                        st.rerun()
+                else:
+                    if st.button("▶ Resume House Voting", key="resume_house", width='stretch', type="primary"):
+                        election.set_committee_type_live("House", True)
+                        audit.log("TOGGLE_COMMITTEE_TYPE", "admin", "House → ON")
+                        st.rerun()
+
+            st.markdown("<br>", unsafe_allow_html=True)
+
         ec1, ec2, ec3 = st.columns(3)
 
         # GO LIVE button (SETUP → LIVE)
@@ -3402,30 +3489,38 @@ elif st.session_state.user_type == "student":
             )
 
             # Pre-fetch all candidates in two queries (no N+1)
-            school_cands_raw = db.execute(
-                """
-                SELECT c.committee_name, c.admission_no, c.manifesto,
-                       s.name, s.class, s.section, s.house
-                FROM candidates c
-                LEFT JOIN students s ON LOWER(TRIM(c.admission_no))=LOWER(TRIM(s.admission_no))
-                WHERE c.committee_type="School" AND c.scope_class=? AND c.status="approved"
-                ORDER BY c.committee_name, s.name
-            """,
-                (fresh[2],),
-            ).fetchall()
+            # Only fetch for committee types that are currently enabled
+            school_type_live = election.is_committee_type_live("School")
+            house_type_live = election.is_committee_type_live("House")
 
-            house_cands_raw = db.execute(
-                """
-                SELECT c.committee_name, c.admission_no, c.manifesto,
-                       s.name, s.class, s.section, s.house
-                FROM candidates c
-                LEFT JOIN students s ON LOWER(TRIM(c.admission_no))=LOWER(TRIM(s.admission_no))
-                WHERE c.committee_type="House" AND c.scope_house=?
-                  AND c.section_group=? AND c.status="approved"
-                ORDER BY c.committee_name, s.name
-            """,
-                (fresh[4], grp),
-            ).fetchall()
+            school_cands_raw = []
+            if school_type_live:
+                school_cands_raw = db.execute(
+                    """
+                    SELECT c.committee_name, c.admission_no, c.manifesto,
+                           s.name, s.class, s.section, s.house
+                    FROM candidates c
+                    LEFT JOIN students s ON LOWER(TRIM(c.admission_no))=LOWER(TRIM(s.admission_no))
+                    WHERE c.committee_type='School' AND c.scope_class=? AND c.status='approved'
+                    ORDER BY c.committee_name, s.name
+                """,
+                    (fresh[2],),
+                ).fetchall()
+
+            house_cands_raw = []
+            if house_type_live:
+                house_cands_raw = db.execute(
+                    """
+                    SELECT c.committee_name, c.admission_no, c.manifesto,
+                           s.name, s.class, s.section, s.house
+                    FROM candidates c
+                    LEFT JOIN students s ON LOWER(TRIM(c.admission_no))=LOWER(TRIM(s.admission_no))
+                    WHERE c.committee_type='House' AND c.scope_house=?
+                      AND c.section_group=? AND c.status='approved'
+                    ORDER BY c.committee_name, s.name
+                """,
+                    (fresh[4], grp),
+                ).fetchall()
 
             # Group by committee
             from collections import defaultdict
@@ -3543,6 +3638,18 @@ elif st.session_state.user_type == "student":
                         school_shown = True
                     vote_choices = render_committee(comm, school_by_comm[comm])
 
+            if not school_type_live:
+                st.markdown(
+                    """
+                <div style="background:rgba(100,116,139,.1);border:1px solid rgba(100,116,139,.3);
+                            border-radius:14px;padding:20px;text-align:center;margin:16px 0;">
+                    <div style="font-size:2rem;">⏸️</div>
+                    <div style="font-weight:700;color:#94a3b8;margin-top:8px;">School Committee Voting is Paused</div>
+                    <div style="color:#475569;font-size:.85rem;margin-top:6px;">Your teacher has temporarily paused voting for school committees.</div>
+                </div>""",
+                    unsafe_allow_html=True,
+                )
+
             house_shown = False
             for comm in voting.HOUSE_COMMITTEES:
                 if house_by_comm.get(comm):
@@ -3558,7 +3665,19 @@ elif st.session_state.user_type == "student":
                         label_override=f"{comm} ({fresh[4]} House)",
                     )
 
-            if not school_shown and not house_shown:
+            if not house_type_live:
+                st.markdown(
+                    f"""
+                <div style="background:rgba(100,116,139,.1);border:1px solid rgba(100,116,139,.3);
+                            border-radius:14px;padding:20px;text-align:center;margin:16px 0;">
+                    <div style="font-size:2rem;">⏸️</div>
+                    <div style="font-weight:700;color:#94a3b8;margin-top:8px;">House Committee Voting is Paused</div>
+                    <div style="color:#475569;font-size:.85rem;margin-top:6px;">Your teacher has temporarily paused voting for house committees.</div>
+                </div>""",
+                    unsafe_allow_html=True,
+                )
+
+            if not school_shown and not house_shown and school_type_live and house_type_live:
                 st.markdown(
                     """
                 <div style="text-align:center;padding:40px;color:#475569;">

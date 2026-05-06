@@ -52,7 +52,7 @@ class VotingEngine:
 
     def get_eligible_house_group(self, student_class: str) -> str:
         try:
-            return "Junior" if int(student_class) in [7, 8] else "Senior"
+            return "Junior" if int(student_class) in [6, 7, 8] else "Senior"
         except ValueError:
             return "Senior"
 

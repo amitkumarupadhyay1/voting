@@ -319,6 +319,54 @@ class Student:
             _cache.invalidate("student_count_by_house")
         return result
 
+    def bulk_add_batch(self, batch_records: List[dict], Auth) -> int:
+        """
+        Atomically insert multiple student records in a SINGLE database transaction.
+        This prevents deadlock that occurs with row-by-row imports.
+        
+        Args:
+            batch_records: List of dicts with keys: admission_no, name, class, section, house, pwd
+            Auth: Auth class for hashing passwords
+        
+        Returns:
+            Number of successfully imported records
+        """
+        if not batch_records:
+            return 0
+        
+        now = datetime.now().isoformat()
+        statements = []
+        
+        for record in batch_records:
+            statements.append(
+                (
+                    """INSERT OR REPLACE INTO students
+                    (admission_no,name,class,section,house,password,
+                     generated_password,has_voted,created_at,updated_at)
+                    VALUES (?,?,?,?,?,?,?,0,?,?)""",
+                    (
+                        record["admission_no"],
+                        record["name"],
+                        record["class"],
+                        record["section"],
+                        record["house"],
+                        Auth._pbkdf2_hash(record["pwd"]),
+                        record["pwd"],
+                        now,
+                        now,
+                    ),
+                )
+            )
+        
+        # Execute ALL inserts in one atomic transaction
+        result = self.db.write_many(statements)
+        if result:
+            # Invalidate caches once after all writes
+            _cache.invalidate("student_count_by_class")
+            _cache.invalidate("student_count_by_house")
+            return len(batch_records)
+        return 0
+
     def get(self, admission_no: str) -> Optional[Tuple]:
         adm = str(admission_no).strip().lower().split(".")[0]
         row = self.db.execute(
@@ -1031,6 +1079,37 @@ class Election:
             else (False, "Reset failed — check logs.")
         )
 
+    # ── Committee-specific election status ──────────────────────────────────────
+    
+    def is_committee_type_live(self, committee_type: str) -> bool:
+        """Check if a specific committee type (School or House) is enabled for voting."""
+        key = f"committee_type_{committee_type}_live"
+        row = self.db.execute(
+            "SELECT value FROM settings WHERE key=?", (key,)
+        ).fetchone()
+        # Default to True for backward compatibility (both types active when LIVE)
+        return row[0] == "1" if row else (self.is_live())
+    
+    def set_committee_type_live(self, committee_type: str, is_live: bool) -> bool:
+        """Enable or disable voting for a specific committee type."""
+        key = f"committee_type_{committee_type}_live"
+        value = "1" if is_live else "0"
+        return self.db.write_many(
+            [
+                (
+                    "INSERT OR REPLACE INTO settings(key,value,updated_at) VALUES(?,?,?)",
+                    (key, value, datetime.now().isoformat()),
+                )
+            ]
+        )
+    
+    def get_committee_type_status(self) -> Dict[str, bool]:
+        """Get the status of both School and House committee elections."""
+        return {
+            "School": self.is_committee_type_live("School"),
+            "House": self.is_committee_type_live("House"),
+        }
+
     def get_statistics(self) -> Dict:
         total = self.db.execute("SELECT COUNT(*) FROM students").fetchone()[0]
         voted = self.db.execute(
@@ -1044,6 +1123,7 @@ class Election:
             "total_votes": t_votes,
             "participation_rate": (voted / total * 100) if total > 0 else 0,
             "phase": self.get_phase(),
+            "committee_status": self.get_committee_type_status(),
         }
 
 

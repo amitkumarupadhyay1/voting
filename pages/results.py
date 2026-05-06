@@ -3,6 +3,7 @@ Results rendering — used by both admin (live) and student (post-close).
 Receives pre-fetched results dict; zero extra DB calls.
 """
 
+import hashlib
 from typing import Dict
 
 import pandas as pd
@@ -12,7 +13,7 @@ import streamlit as st
 from pages.components import RANK_ICONS, avatar, box, ci, hm, result_card_html
 
 
-def _render_vote_distribution_chart(cands: list, comm_name: str, total_cv: int):
+def _render_vote_distribution_chart(cands: list, comm_name: str, total_cv: int, widget_prefix: str = ""):
     """Sub-task 1.3.1: Create bar chart component for vote distribution"""
     if not cands or total_cv == 0:
         return
@@ -69,10 +70,14 @@ def _render_vote_distribution_chart(cands: list, comm_name: str, total_cv: int):
         hovermode="closest",
     )
 
-    st.plotly_chart(fig, width='stretch', key=f"bar_{comm_name}")
+    # Use hash with all relevant data to ensure absolute uniqueness
+    # Include widget_prefix, committee name, and all candidate admission numbers
+    cand_adms = "_".join(sorted([str(c.get("adm", c["name"])) for c in cands]))
+    unique_suffix = hashlib.md5(f"{widget_prefix}_{comm_name}_bar_{cand_adms}_{total_cv}".encode()).hexdigest()[:12]
+    st.plotly_chart(fig, width='stretch', key=f"bar_{unique_suffix}")
 
 
-def _render_house_participation_chart(cands: list, comm_name: str):
+def _render_house_participation_chart(cands: list, comm_name: str, widget_prefix: str = ""):
     """Sub-task 1.3.2: Add pie chart for participation by house"""
     if not cands:
         return
@@ -134,7 +139,12 @@ def _render_house_participation_chart(cands: list, comm_name: str):
         ),
     )
 
-    st.plotly_chart(fig, width='stretch', key=f"pie_{comm_name}")
+    # Use hash with all relevant data to ensure absolute uniqueness
+    # Include widget_prefix, committee name, and all candidate admission numbers
+    cand_adms = "_".join(sorted([str(c.get("adm", c["name"])) for c in cands]))
+    total_votes = sum(house_votes.values())
+    unique_suffix = hashlib.md5(f"{widget_prefix}_{comm_name}_pie_{cand_adms}_{total_votes}".encode()).hexdigest()[:12]
+    st.plotly_chart(fig, width='stretch', key=f"pie_{unique_suffix}")
 
 
 def _render_animated_podium(cands: list, comm_name: str):
@@ -309,21 +319,26 @@ def _render_committee(
             )
         )
         if show_tie_break and on_tie_break:
+            # Use hash with all relevant data to ensure absolute uniqueness
+            # Include widget_prefix, committee name, and tied candidate admission numbers
+            tied_adms = "_".join(sorted([str(c.get("adm", c["name"])) for c in tied_cands]))
+            unique_suffix = hashlib.md5(f"{widget_prefix}_{comm_name}_tb_{tied_adms}".encode()).hexdigest()[:12]
+            
             with st.expander(f"🔨 Break tie for {comm_name}"):
                 options = {c["name"]: c["adm"] for c in tied_cands}
                 chosen_name = st.selectbox(
                     "Select winner",
                     list(options.keys()),
-                    key=f"{widget_prefix}tb_sel_{comm_name}",
+                    key=f"tb_sel_{unique_suffix}",
                 )
                 reason = st.text_input(
                     "Reason (required)",
-                    key=f"{widget_prefix}tb_reason_{comm_name}",
+                    key=f"tb_reason_{unique_suffix}",
                     placeholder="e.g. Coin toss, teacher decision...",
                 )
                 if st.button(
                     "✅ Confirm Tie-Break",
-                    key=f"{widget_prefix}tb_btn_{comm_name}",
+                    key=f"tb_btn_{unique_suffix}",
                     type="primary",
                 ):
                     if not reason.strip():
@@ -342,12 +357,12 @@ def _render_committee(
     # Bar chart for vote distribution
     if total_cv > 0:
         with st.expander("📊 Vote Distribution Chart", expanded=False):
-            _render_vote_distribution_chart(cands, comm_name, total_cv)
+            _render_vote_distribution_chart(cands, comm_name, total_cv, widget_prefix)
 
     # Pie chart for house participation
     if total_cv > 0 and len(set(c["house"] for c in cands)) > 1:
         with st.expander("🏠 House Participation Chart", expanded=False):
-            _render_house_participation_chart(cands, comm_name)
+            _render_house_participation_chart(cands, comm_name, widget_prefix)
 
     # Full ranked list
     student_voted_for = (

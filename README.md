@@ -187,7 +187,7 @@ streamlit run app.py
 - Discipline
 
 **Class Groups**:
-- Junior: Classes 7-8
+- Junior: Classes 6-8
 - Senior: Classes 9-12
 
 ---

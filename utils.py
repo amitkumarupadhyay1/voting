@@ -15,8 +15,6 @@ from openpyxl.styles import (
 )
 from openpyxl.utils import get_column_letter
 
-from models import Database, Student
-
 
 class Utils:
 
@@ -201,16 +199,45 @@ class Utils:
                     sheet_name = f"Class {class_name}"
                     df = pd.DataFrame(rows)
                     df.to_excel(writer, index=False, sheet_name=sheet_name)
-                    _style_header_and_data(writer.sheets[sheet_name], df, header_color="C65911")
+                    ws = writer.sheets[sheet_name]
+                    
+                    # Apply enhanced styling
+                    _style_header_and_data(ws, df, header_color="C65911")
+                    
+                    # Additional formatting for school results
+                    from openpyxl.styles import Font, PatternFill, Alignment
+                    
+                    # Adjust column widths for better readability
+                    ws.column_dimensions['A'].width = 12  # Admission No
+                    ws.column_dimensions['B'].width = 25  # Candidate Name
+                    ws.column_dimensions['C'].width = 10  # Section
+                    ws.column_dimensions['D'].width = 18  # Committee Name
+                    ws.column_dimensions['E'].width = 8   # Class
+                    ws.column_dimensions['F'].width = 10  # Votes
+                    ws.column_dimensions['G'].width = 10  # Vote %
+                    
+                    # Add title row at the top
+                    ws.insert_rows(1)
+                    ws.merge_cells('A1:G1')
+                    title_cell = ws['A1']
+                    title_cell.value = f"Class {class_name} - School Committee Results"
+                    title_cell.font = Font(bold=True, size=14, color="FFFFFF")
+                    title_cell.fill = PatternFill(start_color="8B4513", end_color="8B4513", fill_type="solid")
+                    title_cell.alignment = Alignment(horizontal="center", vertical="center")
+                    ws.row_dimensions[1].height = 25
+                    
+                    # Update freeze panes to account for title row
+                    ws.freeze_panes = "A3"
         
         return output.getvalue()
 
     @staticmethod
-    def create_house_results_file(db: Database, results: Dict) -> bytes:
+    def create_house_results_file(db, results: Dict) -> bytes:
         """
         House-wise breakdown: one sheet per house showing all house committee results.
         """
-
+        from models import Database
+        
         houses = ["Ajanta", "Sanchi", "Taxila", "Nalanda"]
         output = BytesIO()
         with pd.ExcelWriter(output, engine="openpyxl") as writer:
@@ -224,40 +251,85 @@ class Utils:
                             ):  # show all, filter by house scope
                                 pass
                         # Get candidates scoped to this house
+                        # Using subquery to avoid SQLite query optimizer issue with LEFT JOIN + WHERE
                         house_cands = db.execute(
                             """
-                            SELECT c.admission_no, s.name, s.class, s.house,
+                            SELECT c.admission_no, s.name, s.class, s.section, s.house,
                                    COUNT(v.id) as vc
-                            FROM candidates c
+                            FROM (
+                                SELECT * FROM candidates 
+                                WHERE committee_type="House" AND scope_house=? 
+                                  AND committee_name=? AND status="approved"
+                            ) c
                             LEFT JOIN students s
                                 ON LOWER(TRIM(c.admission_no))=LOWER(TRIM(s.admission_no))
                             LEFT JOIN votes v
                                 ON LOWER(TRIM(v.candidate_adm))=LOWER(TRIM(c.admission_no))
                                 AND v.committee_name=c.committee_name
-                            WHERE c.committee_type="House" AND c.scope_house=?
-                                AND c.committee_name=? AND c.status="approved"
                             GROUP BY c.admission_no ORDER BY vc DESC
                         """,
                             (house, cname),
                         ).fetchall()
                         if not house_cands:
                             continue
-                        total = sum(r[4] for r in house_cands)
+                        total = sum(r[5] for r in house_cands)
                         for rank, r in enumerate(house_cands, 1):
                             rows.append(
                                 {
                                     "Committee": cname,
                                     "Rank": rank,
+                                    "Admission No": r[0],
                                     "Name": r[1] or r[0],
                                     "Class": r[2] or "?",
-                                    "Votes": int(r[4]),
-                                    "Vote %": f"{round(r[4] / total * 100, 1) if total else 0}%",
+                                    "Section": r[3] or "?",
+                                    "Votes": int(r[5]),
+                                    "Vote %": f"{round(r[5] / total * 100, 1) if total else 0}%",
                                 }
                             )
                 if rows:
                     df = pd.DataFrame(rows)
                     df.to_excel(writer, index=False, sheet_name=house[:31])
-                    _style_header_and_data(writer.sheets[house[:31]], df, header_color="2E5C8A")
+                    ws = writer.sheets[house[:31]]
+                    
+                    # Apply enhanced styling for house results
+                    _style_header_and_data(ws, df, header_color="2E5C8A")
+                    
+                    # Additional formatting for house results
+                    from openpyxl.styles import Font, PatternFill, Alignment
+                    
+                    # Highlight rank 1 (winners) in each committee
+                    for row_num in range(2, ws.max_row + 1):
+                        rank_cell = ws[f'B{row_num}']  # Rank column
+                        if rank_cell.value == 1:
+                            # Gold highlight for winners
+                            for col_letter in ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']:
+                                cell = ws[f'{col_letter}{row_num}']
+                                cell.fill = PatternFill(start_color="FFD700", end_color="FFD700", fill_type="solid")
+                                cell.font = Font(bold=True, size=11)
+                    
+                    # Adjust column widths for better readability
+                    ws.column_dimensions['A'].width = 15  # Committee
+                    ws.column_dimensions['B'].width = 8   # Rank
+                    ws.column_dimensions['C'].width = 12  # Admission No
+                    ws.column_dimensions['D'].width = 25  # Name
+                    ws.column_dimensions['E'].width = 8   # Class
+                    ws.column_dimensions['F'].width = 10  # Section
+                    ws.column_dimensions['G'].width = 10  # Votes
+                    ws.column_dimensions['H'].width = 10  # Vote %
+                    
+                    # Add title row at the top
+                    ws.insert_rows(1)
+                    ws.merge_cells('A1:H1')
+                    title_cell = ws['A1']
+                    title_cell.value = f"{house} House - Committee Results"
+                    title_cell.font = Font(bold=True, size=14, color="FFFFFF")
+                    title_cell.fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
+                    title_cell.alignment = Alignment(horizontal="center", vertical="center")
+                    ws.row_dimensions[1].height = 25
+                    
+                    # Update freeze panes to account for title row
+                    ws.freeze_panes = "A3"
+                    
                 else:
                     # Empty sheet placeholder
                     df = pd.DataFrame([{"Note": f"No house committee results for {house}"}])
@@ -268,8 +340,8 @@ class Utils:
     # ── student import ─────────────────────────────────────────────────────────
 
     @staticmethod
-    def validate_student_data(row: dict, db: Database) -> Tuple[bool, str, dict]:
-        from models import Config
+    def validate_student_data(row: dict, db) -> Tuple[bool, str, dict]:
+        from models import Config, Database
 
         conf = Config(db)
         valid_houses = set(conf.get_houses())
@@ -324,9 +396,10 @@ class Utils:
 
     @staticmethod
     def import_students_from_excel(
-        df: pd.DataFrame, db: Database, progress_callback=None
+        df: pd.DataFrame, db, progress_callback=None
     ) -> Tuple[int, int, List[str]]:
         from auth import Auth
+        from models import Database, Student
 
         imported, errors = 0, []
         student_model = Student(db)
@@ -338,6 +411,17 @@ class Utils:
             return 0, len(df), [f"Missing columns: {', '.join(sorted(missing))}"]
 
         total = len(df)
+        
+        # Pre-cache config to avoid repeated DB queries during validation
+        from models import Config
+        conf = Config(db)
+        valid_houses = set(conf.get_houses())
+        valid_classes = set(conf.get_classes())
+        valid_sections = set(conf.get_sections())
+        
+        # Batch collect all valid records before writing to DB
+        batch_inserts = []
+        
         for idx, row in df.iterrows():
             if progress_callback:
                 progress_callback(idx + 1, total)
@@ -351,18 +435,21 @@ class Utils:
                 )
                 continue
             pwd = Utils.generate_password()
-            if student_model.add(
-                data["admission_no"],
-                data["name"],
-                data["class"],
-                data["section"],
-                data["house"],
-                Auth.hash_password(pwd),
-                pwd,
-            ):
-                imported += 1
-            else:
-                errors.append(f"Row {idx+2}: DB error for {data['admission_no']}")
+            # Queue for batch insert instead of individual writes
+            batch_inserts.append({
+                "admission_no": data["admission_no"],
+                "name": data["name"],
+                "class": data["class"],
+                "section": data["section"],
+                "house": data["house"],
+                "pwd": pwd,
+            })
+        
+        # Now do a single batch write to DB instead of row-by-row
+        if batch_inserts:
+            imported = student_model.bulk_add_batch(batch_inserts, Auth)
+            if imported == 0 and batch_inserts:
+                errors.append("Batch write failed — no records were imported")
 
         return imported, len(errors), errors
 
@@ -454,8 +541,8 @@ class Utils:
         return rows, errors
 
     @staticmethod
-    def get_vote_statistics(db: Database) -> dict:
-        from models import Election
+    def get_vote_statistics(db) -> dict:
+        from models import Election, Database
 
         stats = Election(db).get_statistics()
         rows = db.execute(
